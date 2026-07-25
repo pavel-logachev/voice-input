@@ -7,11 +7,12 @@ namespace VoiceInput.E2E.Harness;
 
 internal static class Program
 {
-    private const string ExpectedText = "Диктовка работает.";
+    private const string DefaultExpectedText = "Диктовка работает.";
 
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
+        var expectedText = args.Length > 0 ? args[0] : DefaultExpectedText;
         Console.OutputEncoding = Encoding.UTF8;
         Forms.Application.EnableVisualStyles();
         Forms.Application.SetCompatibleTextRenderingDefault(false);
@@ -40,19 +41,19 @@ internal static class Program
             SendActivationHotkey();
 
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-            while (DateTime.UtcNow < deadline && textBox.Text != ExpectedText)
+            while (DateTime.UtcNow < deadline && textBox.Text != expectedText)
             {
                 await Task.Delay(50);
             }
 
-            if (textBox.Text == ExpectedText)
+            if (textBox.Text == expectedText)
             {
                 Console.WriteLine($"E2E_PASS text={textBox.Text}");
                 Environment.ExitCode = 0;
             }
             else
             {
-                Console.Error.WriteLine($"E2E_FAIL expected={ExpectedText} actual={textBox.Text}");
+                Console.Error.WriteLine($"E2E_FAIL expected={expectedText} actual={textBox.Text}");
                 Environment.ExitCode = 1;
             }
 

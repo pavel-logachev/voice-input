@@ -1,6 +1,6 @@
 # Voice Input — архитектурное видение
 
-**Статус:** draft 0.2 — local-first  
+**Статус:** 0.3 — local-first MVP реализован из исходников; документ совмещает текущую реализацию и целевую архитектуру
 **Целевая платформа:** Windows 10/11  
 **Суть:** резидентное приложение, которое по глобальной горячей клавише записывает речь, расшифровывает её и вставляет результат в то поле, где находился курсор.
 
@@ -11,11 +11,25 @@
 1. курсор уже стоит в нужном поле;
 2. пользователь удерживает или нажимает горячую клавишу;
 3. появляется маленький **неактивирующийся overlay**, но фокус остаётся в исходном приложении;
-4. речь распознаётся локально; длинная диктовка заранее режется по естественным паузам;
+4. речь распознаётся локально; длинная диктовка режется в памяти на short-form сегменты;
 5. после отпускания клавиши финальный текст появляется у курсора;
-6. `Esc` отменяет сессию, ничего не вставляя.
+6. целевой UX позволяет `Esc` отменить сессию, ничего не вставляя; в текущем MVP этот пункт ещё не реализован.
 
 Главный критерий качества — не максимальное число AI-функций, а предсказуемость: вызов срабатывает всегда, фокус не теряется, буфер обмена не портится, текст не переписывается без разрешения.
+
+### Реализовано на 2026-07-26
+
+- `Ctrl + Shift + Space` запускает hold-to-talk с сохранением foreground `HWND`;
+- WPF overlay использует `WS_EX_NOACTIVATE`;
+- NAudio/WASAPI записывает default microphone и преобразует поток в mono float32 16 kHz;
+- quiet-window segmenter режет итоговую запись на фрагменты до 20 секунд;
+- отдельный .NET worker через P/Invoke загружает `transcribe.cpp 0.1.3` и GigaAM-v3 E2E RNNT Q4;
+- приложение и worker общаются через named pipe;
+- runtime и модель автоматически загружаются по pinned URL и проверяются по SHA-256;
+- CPU backend подтверждён on-device тестом и выбран default;
+- Unicode `SendInput` вставляет текст только если foreground window не изменилась.
+
+Пока не реализованы: `Esc`-отмена, password/UIA detection, clipboard/UIA fallbacks, выбор микрофона, worker watchdog/restart, установщик и code signing.
 
 ## 2. Главное техническое решение
 
@@ -23,10 +37,10 @@
 
 Предлагаемый стек:
 
-- **C# + актуальный .NET LTS**;
+- **C# + .NET 10**;
 - **WPF** только для tray/settings/overlay;
-- прямые Windows API для `WH_KEYBOARD_LL`, foreground/focus, `SendInput`, clipboard и UI Automation;
-- **WASAPI** через тонкую обёртку (вероятно NAudio) для захвата микрофона;
+- прямые Windows API для `RegisterHotKey`, foreground/focus и `SendInput`; clipboard/UI Automation остаются следующим insertion-срезом;
+- **WASAPI через NAudio 2.2.1** для захвата микрофона;
 - **GigaAM-v3 E2E RNNT** в GGUF через `transcribe.cpp` как основной local-ASR кандидат;
 - отдельный долгоживущий native worker, связанный с приложением через named pipe;
 - встроенный DI/host, structured logging и state machine;
@@ -48,7 +62,7 @@ flowchart LR
     HK[Global Hotkey] --> SC[Session Coordinator]
     TC[Target Capture\nHWND + focused control] --> SC
     SC --> AC[Audio Capture\nWASAPI + ring buffer]
-    AC --> SEG[VAD Segmenter\nshort local batches]
+    AC --> SEG[Quiet-window Segmenter\n≤ 20 s local batches]
     SEG --> ASR[Local ASR Adapter]
     ASR --> TP[Text Pipeline]
     TP --> IR[Insertion Router]
@@ -66,14 +80,14 @@ flowchart LR
 
 ### 3.1 `HotkeyService`
 
-- Глобально отслеживает нажатие и отпускание комбинации.
-- Поддерживает два режима: **hold-to-talk** и **toggle**.
-- Для hold-to-talk нужен low-level keyboard hook: обычного `RegisterHotKey` недостаточно для надёжного события отпускания.
+- Глобально получает нажатие комбинации через `RegisterHotKey`.
+- Текущий **hold-to-talk** начинает запись по `WM_HOTKEY`, а отпускание отслеживает коротким polling `GetAsyncKeyState`.
+- Low-level hook или Raw Input остаются вариантом, если polling покажет пропуски или понадобится toggle/переназначение.
 - По умолчанию не перехватывает обычный ввод и подавляет только явно назначенную комбинацию.
 
 ### 3.2 `TargetCapture`
 
-В момент начала диктовки фиксирует:
+Целевая версия в момент начала диктовки фиксирует:
 
 - foreground `HWND` и process id;
 - UI Automation element под фокусом, если доступен;
@@ -81,14 +95,14 @@ flowchart LR
 - уровень целостности целевого процесса;
 - минимальные метаданные приложения для выбора профиля вставки.
 
-Содержимое окна приложение по умолчанию не читает. Overlay создаётся с `WS_EX_NOACTIVATE`, поэтому не должен забирать фокус.
+Текущий MVP фиксирует foreground `HWND` и process id. Содержимое окна приложение не читает. Overlay создаётся с `WS_EX_NOACTIVATE`, поэтому не должен забирать фокус.
 
 ### 3.3 `SessionCoordinator`
 
 Единая state machine:
 
 ```text
-Idle → Arming → Recording → Finalizing → Inserting → Idle
+Idle → Recording → Processing → Inserting → Idle
                    ↘ Cancelled / Failed ↗
 ```
 
@@ -99,32 +113,27 @@ Idle → Arming → Recording → Finalizing → Inserting → Idle
 ### 3.4 `AudioCapture`
 
 - захват mono PCM через WASAPI;
-- небольшой ring buffer, чтобы не потерять первые слоги после нажатия;
-- resample в 16 kHz mono PCM для local runtime;
-- VAD закрывает сегмент только на уверенной естественной паузе и не должен обрезать тихую речь;
-- сегменты ограничиваются примерно 15–20 секундами, чтобы оставаться внутри short-form лимита модели;
-- закрытые сегменты можно распознавать, пока пользователь продолжает говорить;
+- resample в 16 kHz mono float32 PCM для local runtime;
+- текущий quiet-window segmenter после окончания записи ищет самые тихие 200-мс окна перед 20-секундным лимитом;
+- online VAD, pre-roll ring buffer и параллельное распознавание закрытых сегментов остаются latency-оптимизациями;
 - аудио хранится только в памяти и не пишется на диск.
 
 ### 3.5 `LocalTranscriptionProvider`
 
-Runtime скрыт за контрактом с явными capabilities:
+Runtime скрыт за компактным контрактом:
 
 ```csharp
-public interface ITranscriptionProvider
+public interface ITranscriber
 {
-    TranscriptionCapabilities Capabilities { get; }
-
-    Task<TranscriptSegment> TranscribeAsync(
-        AudioSegment segment,
-        TranscriptionOptions options,
+    ValueTask<string> TranscribeAsync(
+        RecordedAudio audio,
         CancellationToken cancellationToken);
 }
 ```
 
-Provider возвращает сегмент текста, word/token timestamps при наличии, ошибки и latency metrics. `SupportsPartial` не предполагается: первый кандидат GigaAM-v3 E2E RNNT работает short-form, а не как настоящая streaming-модель.
+`SegmentingTranscriber` делит запись, отправляет float32-сегменты worker-процессу и соединяет непустые ответы. Word/token timestamps и capabilities можно добавить, не меняя системный hotkey/audio/insertion путь.
 
-На старте реализуется **один** хорошо проверенный local runtime: GigaAM-v3 E2E RNNT Q4_K_M через `transcribe.cpp`. E2E CTC и Russian Whisper Turbo служат benchmark challengers, а не одновременно поставляемыми backends. Worker загружает модель один раз, прогревает CPU backend и перезапускается оболочкой при падении. CPU — безопасный default; Vulkan на AMD включается только если локальный warm benchmark подтверждает выигрыш.
+Реализован **один** local runtime: GigaAM-v3 E2E RNNT Q4_K_M через `transcribe.cpp 0.1.3`. E2E CTC и Russian Whisper Turbo служат benchmark challengers, а не одновременно поставляемыми backends. Worker загружает модель один раз; watchdog/restart ещё предстоит добавить. CPU выбран default после локального warm benchmark, где он оказался быстрее Vulkan на встроенной AMD Graphics.
 
 ### 3.6 `TextPipeline`
 
@@ -174,8 +183,8 @@ Provider возвращает сегмент текста, word/token timestamps
 ## 4. Безопасность и приватность
 
 - запись начинается только после hotkey и имеет заметную индикацию;
-- запись прекращается гарантированно при отпускании, `Esc`, блокировке Windows и смене аудиоустройства;
-- в password/secure fields вставка блокируется;
+- текущая запись прекращается при отпускании hotkey; `Esc`, блокировка Windows и смена устройства должны стать дополнительными cancellation-триггерами;
+- блокировка вставки в password/secure fields запланирована вместе с UI Automation target capture;
 - аудио не сохраняется и не отправляется по сети;
 - история расшифровок **выключена по умолчанию**;
 - диагностические логи не содержат аудио и текст;
@@ -186,17 +195,17 @@ Provider возвращает сегмент текста, word/token timestamps
 
 ## 5. Хранение состояния
 
-Для MVP:
+Целевое локальное хранение:
 
-- обычные настройки — versioned JSON в `%LocalAppData%`;
-- manifest модели и выбранный inference backend — versioned settings;
+- runtime, модель и download cache уже размещаются в `%LocalAppData%\VoiceInput`;
+- обычные настройки и manifest выбранного backend позднее будут храниться как versioned JSON;
 - словарь и профили — локальная SQLite только когда они появятся;
 - история — отдельная opt-in таблица с понятной кнопкой полного удаления;
 - никакой серверной учётной записи для личной версии.
 
 ## 6. Надёжность
 
-Обязательные защитные механизмы:
+Обязательные защитные механизмы целевой версии (state serialization, target capture и focus recheck уже реализованы; остальное остаётся roadmap):
 
 - одна активная session state machine;
 - cancellation на каждом I/O-этапе;
@@ -213,23 +222,17 @@ Provider возвращает сегмент текста, word/token timestamps
 ```text
 VoiceInput.sln
 src/
-  VoiceInput.App/             # WPF tray, settings, bootstrap
+  VoiceInput.App/             # WPF tray, overlay, bootstrap, worker packaging
+  VoiceInput.Asr.Worker/      # изолированный .NET host для native transcribe.cpp
   VoiceInput.Core/            # state machine, domain contracts, policies
-  VoiceInput.Windows/         # hotkeys, HWND/focus, overlay, clipboard, SendInput, UIA
-  VoiceInput.Audio/           # WASAPI capture, framing, resampling
-  VoiceInput.Transcription/   # provider contracts, VAD segments, text assembly
-  VoiceInput.LocalInference/  # named-pipe client and worker supervision
-  VoiceInput.Storage/         # settings, model manifest, optional history
-  VoiceInput.Diagnostics/     # redacted logs and metrics
-
-native/
-  transcribe-worker/          # transcribe.cpp host, GGUF, CPU/Vulkan
+  VoiceInput.Windows/         # WASAPI, hotkey/focus/SendInput, provisioner, named-pipe client
 
 tests/
   VoiceInput.Core.Tests/
   VoiceInput.Windows.Tests/
-  VoiceInput.Transcription.Tests/
-  VoiceInput.E2E.Harness/     # test controls + fake ASR
+  VoiceInput.E2E.Harness/     # реальная global-hotkey/foreground/SendInput проверка
+  VoiceInput.Audio.E2E/       # реальный default microphone без сохранения аудио
+  VoiceInput.Asr.E2E/         # production workflow с PCM fixture и настоящим GigaAM worker
 
 docs/
 ```
@@ -238,7 +241,7 @@ docs/
 
 ## 8. План MVP — вертикальными срезами
 
-### Slice A — доказать системную интеграцию
+### Slice A — доказать системную интеграцию — выполнен
 
 - tray process;
 - глобальный hold-to-talk hotkey;
@@ -249,16 +252,15 @@ docs/
 
 **Критерий:** фокус и clipboard остаются корректными, текст стабильно попадает к курсору.
 
-### Slice B — настоящая диктовка
+### Slice B — настоящая диктовка — базовый путь выполнен
 
 - WASAPI capture;
-- VAD-сегментация без потери тихой речи;
+- quiet-window сегментация без записи на диск;
 - GigaAM-v3 E2E RNNT Q4 через local worker;
 - сборка коротких сегментов в один финальный transcript;
-- benchmark E2E RNNT против E2E CTC и Russian Whisper Turbo;
-- русский и mixed RU/EN как отдельные quality-срезы;
-- cancel/error/retry semantics;
-- latency metrics.
+- benchmark E2E RNNT против E2E CTC и Russian Whisper Turbo — ещё предстоит;
+- русский и mixed RU/EN как отдельные quality-срезы — ещё предстоит;
+- расширенные cancel/retry semantics и latency telemetry — ещё предстоят.
 
 **Критерий:** от отпускания клавиши до вставки финального текста — субъективно мгновенно на обычной фразе; точные бюджеты установим по реальным измерениям.
 
@@ -291,13 +293,11 @@ docs/
 - командная синхронизация словарей;
 - обход защищённых/elevated окон.
 
-## 11. Первые решения перед кодом
+## 11. Следующие решения
 
-Перед Slice A достаточно согласовать четыре вещи:
-
-1. что именно раздражает в OpenWhispr — UX, задержка, качество, вставка, приватность или нестабильность;
-2. семантика hotkey: удержание, переключатель или оба режима;
-3. достаточно ли в первом MVP компактного индикатора без псевдостримингового partial transcript;
-4. какие 5–7 приложений составят обязательную матрицу совместимости.
-
-Архитектурно я бы начал именно с **надежной вставки и сохранения фокуса**, используя fake transcript. Подключать ASR до доказательства этого пути — значит оптимизировать не самую рискованную часть продукта.
+1. Матрица совместимости insertion path: Notepad, Chromium/Electron, VS Code, Office и terminal.
+2. `Esc`-отмена, lock/suspend handling и реакция на исчезновение микрофона.
+3. Clipboard/UI Automation fallback без повреждения пользовательского clipboard.
+4. Выбор микрофона, переназначение hotkey и autostart.
+5. Installer, code signing, release packaging и безопасное автообновление.
+6. Личный RU/mixed-RU-EN корпус для сравнения RNNT, CTC и Whisper challenger.

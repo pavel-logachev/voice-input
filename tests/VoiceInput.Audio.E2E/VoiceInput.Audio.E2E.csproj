@@ -1,14 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\VoiceInput.Core\VoiceInput.Core.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="NAudio" Version="2.2.1" />
+    <ProjectReference Include="..\..\src\VoiceInput.Core\VoiceInput.Core.csproj" />
+    <ProjectReference Include="..\..\src\VoiceInput.Windows\VoiceInput.Windows.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
+    <OutputType>Exe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
