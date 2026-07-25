@@ -24,11 +24,15 @@ public partial class MainWindow : Window, IActivationOverlay
         (StatusText.Text, DetailText.Text, StatusDot.Fill) = state switch
         {
             ActivationVisualState.Listening =>
-                ("Тестовая диктовка", "Отпустите Ctrl + Shift + Space", Brush("#22D3EE")),
+                ("Слушаю", "Говорите и отпустите Ctrl + Shift + Space", Brush("#22D3EE")),
+            ActivationVisualState.Processing =>
+                ("Распознаю локально", "GigaAM обрабатывает запись на этом компьютере", Brush("#A78BFA")),
+            ActivationVisualState.NoSpeech =>
+                ("Речь не распознана", "Попробуйте говорить ближе к микрофону", Brush("#F59E0B")),
             ActivationVisualState.Inserting =>
                 ("Вставляю текст", "Фокус остаётся в исходном окне", Brush("#F59E0B")),
             ActivationVisualState.Success =>
-                ("Готово", "Тестовая фраза вставлена", Brush("#34D399")),
+                ("Готово", "Локальная расшифровка вставлена", Brush("#34D399")),
             _ => throw new ArgumentOutOfRangeException(nameof(state), state, null),
         };
 
@@ -41,9 +45,21 @@ public partial class MainWindow : Window, IActivationOverlay
 
     public void ShowError(string message)
     {
-        StatusText.Text = "Не удалось вставить текст";
+        StatusText.Text = "Ошибка диктовки";
         DetailText.Text = message;
         StatusDot.Fill = Brush("#FB7185");
+        PositionAboveTaskbar();
+        if (!IsVisible)
+        {
+            base.Show();
+        }
+    }
+
+    public void ShowStatus(string title, string detail)
+    {
+        StatusText.Text = title;
+        DetailText.Text = detail;
+        StatusDot.Fill = Brush("#22D3EE");
         PositionAboveTaskbar();
         if (!IsVisible)
         {
