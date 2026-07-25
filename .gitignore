@@ -1,0 +1,40 @@
+# .NET build output
+bin/
+obj/
+artifacts/
+TestResults/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# IDEs
+.vs/
+.idea/
+.vscode/
+_ReSharper*/
+*.DotSettings.user
+
+# Packages and generated files
+*.nupkg
+*.snupkg
+packages/
+
+# Local models and native runtime artifacts
+models/
+*.gguf
+*.onnx
+*.bin
+native/**/build/
+native/**/out/
+
+# Local application data and diagnostics
+.local/
+logs/
+*.log
+*.dmp
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
