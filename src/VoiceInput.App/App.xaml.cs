@@ -24,6 +24,7 @@ public partial class App : System.Windows.Application, IDisposable
     private Forms.ToolStripMenuItem? statusItem;
     private DictationWorkflow? workflow;
     private IAudioRecorder? recorder;
+    private IRecordingLevelSource? recordingLevelSource;
     private GigaAmWorkerClient? asrClient;
     private ManualReleaseGate? toggleReleaseGate;
     private string? initializationError;
@@ -83,6 +84,12 @@ public partial class App : System.Windows.Application, IDisposable
             hotkey.CancellationRequested -= OnCancellationRequested;
             hotkey.Dispose();
             hotkey = null;
+        }
+
+        if (recordingLevelSource is not null)
+        {
+            recordingLevelSource.RecordingLevelChanged -= OnRecordingLevelChanged;
+            recordingLevelSource = null;
         }
 
         (recorder as IDisposable)?.Dispose();
@@ -146,6 +153,12 @@ public partial class App : System.Windows.Application, IDisposable
 
             asrClient = pendingClient;
             recorder = pendingRecorder;
+            if (pendingRecorder is IRecordingLevelSource pendingLevelSource)
+            {
+                recordingLevelSource = pendingLevelSource;
+                recordingLevelSource.RecordingLevelChanged += OnRecordingLevelChanged;
+            }
+
             workflow = readyWorkflow;
             pendingClient = null;
             pendingRecorder = null;
@@ -314,6 +327,11 @@ public partial class App : System.Windows.Application, IDisposable
         {
             Log("escape-cancel-requested");
         }
+    }
+
+    private void OnRecordingLevelChanged(float level)
+    {
+        overlay?.SetRecordingLevel(level);
     }
 
     private async Task ShowTransientErrorAsync(string message)

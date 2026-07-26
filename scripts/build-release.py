@@ -73,7 +73,7 @@ def publish(project: Path, output: Path, dotnet: Path, root: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build the self-contained Voice Input Windows installer.")
-    parser.add_argument("--version", default="0.4.1")
+    parser.add_argument("--version", default="0.4.2")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[1]

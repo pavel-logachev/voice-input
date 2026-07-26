@@ -5,7 +5,7 @@ using VoiceInput.Core.Audio;
 
 namespace VoiceInput.Windows.Audio;
 
-public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IDisposable
+public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSource, IDisposable
 {
     private const int OutputSampleRate = 16_000;
     private static readonly TimeSpan MaximumRecording = TimeSpan.FromMinutes(2);
@@ -14,9 +14,14 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IDisposable
     private WasapiCapture? capture;
     private MemoryStream? rawAudio;
     private WaveFormat? capturedFormat;
+    private BufferedWaveProvider? levelWaveBuffer;
+    private ISampleProvider? levelSampleProvider;
+    private float[]? levelSamples;
     private TaskCompletionSource? recordingStopped;
     private long maximumRawBytes;
     private bool disposed;
+
+    public event Action<float>? RecordingLevelChanged;
 
     public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
@@ -38,6 +43,7 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IDisposable
                     maximumRawBytes = checked((long)(capturedFormat.AverageBytesPerSecond * MaximumRecording.TotalSeconds));
                     rawAudio = new MemoryStream(capacity: (int)Math.Min(maximumRawBytes, 4 * 1024 * 1024));
                     recordingStopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    InitializeLevelTracking(capturedFormat);
 
                     nextCapture.DataAvailable += OnDataAvailable;
                     nextCapture.RecordingStopped += OnRecordingStopped;
@@ -124,6 +130,7 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IDisposable
 
     private void OnDataAvailable(object? sender, WaveInEventArgs eventArgs)
     {
+        float? level = null;
         lock (gate)
         {
             if (!ReferenceEquals(sender, capture) || rawAudio is null)
@@ -139,6 +146,21 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IDisposable
 
             var bytesToWrite = (int)Math.Min(remaining, eventArgs.BytesRecorded);
             rawAudio.Write(eventArgs.Buffer, 0, bytesToWrite);
+
+            if (levelWaveBuffer is not null && levelSampleProvider is not null && levelSamples is not null)
+            {
+                levelWaveBuffer.AddSamples(eventArgs.Buffer, 0, bytesToWrite);
+                var sampleCount = levelSampleProvider.Read(levelSamples, 0, levelSamples.Length);
+                if (sampleCount > 0)
+                {
+                    level = AudioLevelNormalizer.FromSamples(levelSamples.AsSpan(0, sampleCount));
+                }
+            }
+        }
+
+        if (level.HasValue)
+        {
+            PublishLevel(level.Value);
         }
     }
 
@@ -184,8 +206,44 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IDisposable
             capture = null;
             rawAudio = null;
             capturedFormat = null;
+            levelWaveBuffer = null;
+            levelSampleProvider = null;
+            levelSamples = null;
             recordingStopped = null;
             maximumRawBytes = 0;
+        }
+    }
+
+    private void InitializeLevelTracking(WaveFormat format)
+    {
+        try
+        {
+            levelWaveBuffer = new BufferedWaveProvider(format)
+            {
+                BufferDuration = TimeSpan.FromSeconds(1),
+                DiscardOnBufferOverflow = true,
+                ReadFully = false,
+            };
+            levelSampleProvider = levelWaveBuffer.ToSampleProvider();
+            levelSamples = new float[Math.Max(4_096, format.SampleRate * format.Channels)];
+        }
+        catch (NotSupportedException)
+        {
+            levelWaveBuffer = null;
+            levelSampleProvider = null;
+            levelSamples = null;
+        }
+    }
+
+    private void PublishLevel(float level)
+    {
+        try
+        {
+            RecordingLevelChanged?.Invoke(level);
+        }
+        catch
+        {
+            // A visual meter must never interrupt microphone capture.
         }
     }
 
