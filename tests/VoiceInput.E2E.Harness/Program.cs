@@ -36,8 +36,25 @@ internal static class Program
 
         form.Shown += async (_, _) =>
         {
-            textBox.Focus();
             await Task.Delay(250);
+            BringToForeground(form.Handle);
+            textBox.Focus();
+            await Task.Delay(100);
+
+            var foregroundWindow = NativeMethods.GetForegroundWindow();
+            Console.WriteLine(
+                $"E2E_READY pid={Environment.ProcessId} hwnd=0x{form.Handle:X} " +
+                $"foreground=0x{foregroundWindow:X}");
+            if (foregroundWindow != form.Handle)
+            {
+                Console.Error.WriteLine(
+                    $"E2E_PRECONDITION_FAIL expected_foreground=0x{form.Handle:X} " +
+                    $"actual_foreground=0x{foregroundWindow:X}");
+                Environment.ExitCode = 2;
+                form.Close();
+                return;
+            }
+
             SendActivationHotkey();
 
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
@@ -69,6 +86,30 @@ internal static class Program
         };
 
         Forms.Application.Run(form);
+    }
+
+    private static void BringToForeground(nint windowHandle)
+    {
+        var foregroundWindow = NativeMethods.GetForegroundWindow();
+        var currentThread = NativeMethods.GetCurrentThreadId();
+        var foregroundThread = foregroundWindow == nint.Zero
+            ? 0
+            : NativeMethods.GetWindowThreadProcessId(foregroundWindow, out _);
+        var attached = foregroundThread != 0 && foregroundThread != currentThread &&
+            NativeMethods.AttachThreadInput(currentThread, foregroundThread, attach: true);
+
+        try
+        {
+            NativeMethods.BringWindowToTop(windowHandle);
+            NativeMethods.SetForegroundWindow(windowHandle);
+        }
+        finally
+        {
+            if (attached)
+            {
+                NativeMethods.AttachThreadInput(currentThread, foregroundThread, attach: false);
+            }
+        }
     }
 
     private static void SendActivationHotkey()
@@ -160,6 +201,20 @@ internal static class Program
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool SetForegroundWindow(nint windowHandle);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool BringWindowToTop(nint windowHandle);
+
+        [DllImport("user32.dll")]
+        public static extern uint GetWindowThreadProcessId(nint windowHandle, out uint processId);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, [MarshalAs(UnmanagedType.Bool)] bool attach);
+
+        [DllImport("kernel32.dll")]
+        public static extern uint GetCurrentThreadId();
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern uint SendInput(uint inputCount, [In] Input[] inputs, int inputSize);
