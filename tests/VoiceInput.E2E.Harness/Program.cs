@@ -13,6 +13,11 @@ internal static class Program
     private static void Main(string[] args)
     {
         var expectedText = args.Length > 0 ? args[0] : DefaultExpectedText;
+        var cancelMode = string.Equals(
+            Environment.GetEnvironmentVariable("VOICE_INPUT_E2E_CANCEL"),
+            "1",
+            StringComparison.Ordinal);
+        var clipboardSentinel = Environment.GetEnvironmentVariable("VOICE_INPUT_E2E_CLIPBOARD_SENTINEL");
         Console.OutputEncoding = Encoding.UTF8;
         Forms.Application.EnableVisualStyles();
         Forms.Application.SetCompatibleTextRenderingDefault(false);
@@ -55,6 +60,34 @@ internal static class Program
                 return;
             }
 
+            if (cancelMode)
+            {
+                SendActivationHotkeyDown();
+                await Task.Delay(200);
+                SendEscape();
+                SendActivationHotkeyUp();
+                await Task.Delay(1_000);
+
+                if (textBox.Text.Length == 0)
+                {
+                    Console.WriteLine("E2E_CANCEL_PASS text=");
+                    Environment.ExitCode = 0;
+                }
+                else
+                {
+                    Console.Error.WriteLine($"E2E_CANCEL_FAIL actual={textBox.Text}");
+                    Environment.ExitCode = 1;
+                }
+
+                form.Close();
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(clipboardSentinel))
+            {
+                Forms.Clipboard.SetText(clipboardSentinel);
+            }
+
             SendActivationHotkey();
 
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
@@ -65,6 +98,16 @@ internal static class Program
 
             if (textBox.Text == expectedText)
             {
+                await Task.Delay(250);
+                if (!string.IsNullOrEmpty(clipboardSentinel) &&
+                    Forms.Clipboard.GetText() != clipboardSentinel)
+                {
+                    Console.Error.WriteLine($"E2E_CLIPBOARD_FAIL actual={Forms.Clipboard.GetText()}");
+                    Environment.ExitCode = 1;
+                    form.Close();
+                    return;
+                }
+
                 Console.WriteLine($"E2E_PASS text={textBox.Text}");
                 Environment.ExitCode = 0;
             }
@@ -114,25 +157,37 @@ internal static class Program
 
     private static void SendActivationHotkey()
     {
-        const ushort control = 0x11;
-        const ushort shift = 0x10;
-        const ushort space = 0x20;
-        const uint keyUp = 0x0002;
-
         var inputs = new[]
         {
-            Keyboard(control, 0),
-            Keyboard(shift, 0),
-            Keyboard(space, 0),
-            Keyboard(space, keyUp),
-            Keyboard(shift, keyUp),
-            Keyboard(control, keyUp),
+            Keyboard(0x11, 0),
+            Keyboard(0x10, 0),
+            Keyboard(0x20, 0),
+            Keyboard(0x20, 0x0002),
+            Keyboard(0x10, 0x0002),
+            Keyboard(0x11, 0x0002),
         };
 
+        Send(inputs, "activation hotkey");
+    }
+
+    private static void SendActivationHotkeyDown() => Send(
+        [Keyboard(0x11, 0), Keyboard(0x10, 0), Keyboard(0x20, 0)],
+        "activation hotkey down");
+
+    private static void SendActivationHotkeyUp() => Send(
+        [Keyboard(0x20, 0x0002), Keyboard(0x10, 0x0002), Keyboard(0x11, 0x0002)],
+        "activation hotkey up");
+
+    private static void SendEscape() => Send(
+        [Keyboard(0x1B, 0), Keyboard(0x1B, 0x0002)],
+        "Escape");
+
+    private static void Send(Input[] inputs, string description)
+    {
         var sent = NativeMethods.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>());
         if (sent != inputs.Length)
         {
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "E2E harness could not send the activation hotkey.");
+            throw new Win32Exception(Marshal.GetLastWin32Error(), $"E2E harness could not send {description}.");
         }
     }
 

@@ -7,6 +7,7 @@ using VoiceInput.Core.Audio;
 using VoiceInput.Windows.Audio;
 using VoiceInput.Windows.Hotkeys;
 using VoiceInput.Windows.Input;
+using VoiceInput.Windows.Lifecycle;
 using VoiceInput.Windows.Targeting;
 using VoiceInput.Windows.Transcription;
 
@@ -16,13 +17,16 @@ public partial class App : System.Windows.Application, IDisposable
 {
     private readonly CancellationTokenSource lifetime = new();
     private MainWindow? overlay;
+    private SingleInstanceLease? singleInstance;
     private GlobalHotkeyRegistration? hotkey;
     private Forms.NotifyIcon? trayIcon;
+    private Icon? applicationIcon;
     private Forms.ToolStripMenuItem? statusItem;
     private DictationWorkflow? workflow;
     private IAudioRecorder? recorder;
     private GigaAmWorkerClient? asrClient;
     private string? initializationError;
+    private int sessionRunning;
     private readonly string? diagnosticLogPath = Environment.GetEnvironmentVariable("VOICE_INPUT_DIAGNOSTIC_LOG");
     private bool disposed;
 
@@ -30,12 +34,27 @@ public partial class App : System.Windows.Application, IDisposable
     {
         base.OnStartup(e);
 
+        singleInstance = new SingleInstanceLease("Local\\VoiceInput.App");
+        if (!singleInstance.IsPrimary)
+        {
+            singleInstance.Dispose();
+            singleInstance = null;
+            Shutdown();
+            return;
+        }
+
         overlay = new MainWindow();
         hotkey = new GlobalHotkeyRegistration();
         hotkey.Activated += OnHotkeyActivated;
+        hotkey.CancellationRequested += OnCancellationRequested;
 
         trayIcon = BuildTrayIcon();
         trayIcon.Visible = true;
+        trayIcon.ShowBalloonTip(
+            5_000,
+            "Voice Input",
+            "Подготавливаю локальное распознавание. Первый запуск может занять несколько минут.",
+            Forms.ToolTipIcon.Info);
         _ = InitializeDictationAsync(lifetime.Token);
     }
 
@@ -58,6 +77,7 @@ public partial class App : System.Windows.Application, IDisposable
         if (hotkey is not null)
         {
             hotkey.Activated -= OnHotkeyActivated;
+            hotkey.CancellationRequested -= OnCancellationRequested;
             hotkey.Dispose();
             hotkey = null;
         }
@@ -78,8 +98,13 @@ public partial class App : System.Windows.Application, IDisposable
             trayIcon = null;
         }
 
+        applicationIcon?.Dispose();
+        applicationIcon = null;
+
         overlay?.Close();
         overlay = null;
+        singleInstance?.Dispose();
+        singleInstance = null;
         lifetime.Dispose();
         GC.SuppressFinalize(this);
     }
@@ -103,11 +128,14 @@ public partial class App : System.Windows.Application, IDisposable
             pendingRecorder = string.IsNullOrWhiteSpace(fixturePath)
                 ? new WasapiPushToTalkRecorder()
                 : new PcmFixtureAudioRecorder(fixturePath);
+            ITextInserter textInserter = Environment.GetEnvironmentVariable("VOICE_INPUT_E2E_FORCE_CLIPBOARD") == "1"
+                ? new WindowsClipboardTextInserter()
+                : new WindowsTextInserter();
             var readyWorkflow = new DictationWorkflow(
                 new ForegroundTargetCapture(),
                 overlay ?? throw new InvalidOperationException("The overlay is unavailable."),
                 new ModifierReleaseGate(),
-                new WindowsUnicodeTextInserter(),
+                textInserter,
                 new SystemAsyncDelay(),
                 pendingRecorder,
                 new SegmentingTranscriber(pendingClient));
@@ -121,6 +149,11 @@ public partial class App : System.Windows.Application, IDisposable
 
             Log("dictation-ready");
             UpdateStatus("Готово — Ctrl + Shift + Space");
+            trayIcon?.ShowBalloonTip(
+                5_000,
+                "Voice Input готов",
+                "Удерживайте Ctrl + Shift + Space, говорите и отпустите клавиши. Esc отменяет диктовку.",
+                Forms.ToolTipIcon.Info);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -130,6 +163,11 @@ public partial class App : System.Windows.Application, IDisposable
             Log($"initialization-error: {exception}");
             initializationError = exception.Message;
             UpdateStatus("Ошибка локальной модели");
+            trayIcon?.ShowBalloonTip(
+                8_000,
+                "Voice Input — ошибка запуска",
+                exception.Message.Length <= 240 ? exception.Message : exception.Message[..240],
+                Forms.ToolTipIcon.Error);
         }
         finally
         {
@@ -154,10 +192,15 @@ public partial class App : System.Windows.Application, IDisposable
         exitItem.Click += (_, _) => Shutdown();
         menu.Items.Add(exitItem);
 
+        var processPath = Environment.ProcessPath;
+        applicationIcon = string.IsNullOrWhiteSpace(processPath)
+            ? null
+            : Icon.ExtractAssociatedIcon(processPath);
+
         return new Forms.NotifyIcon
         {
             Text = "Voice Input — подготовка модели",
-            Icon = SystemIcons.Application,
+            Icon = applicationIcon ?? SystemIcons.Application,
             ContextMenuStrip = menu,
         };
     }
@@ -184,12 +227,23 @@ public partial class App : System.Windows.Application, IDisposable
             return;
         }
 
+        if (Interlocked.CompareExchange(ref sessionRunning, 1, 0) != 0)
+        {
+            return;
+        }
+
         try
         {
+            hotkey?.EnableCancellation();
             await workflow.TryActivateAsync(lifetime.Token);
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
         {
+        }
+        catch (OperationCanceledException)
+        {
+            Log("dictation-cancelled");
+            await ShowTransientStatusAsync("Отменено", "Текст не вставлен");
         }
         catch (TargetFocusChangedException)
         {
@@ -199,6 +253,19 @@ public partial class App : System.Windows.Application, IDisposable
         {
             Log($"dictation-error: {exception}");
             await ShowTransientErrorAsync(exception.Message);
+        }
+        finally
+        {
+            hotkey?.DisableCancellation();
+            Interlocked.Exchange(ref sessionRunning, 0);
+        }
+    }
+
+    private void OnCancellationRequested(object? sender, EventArgs e)
+    {
+        if (workflow?.CancelActive() == true)
+        {
+            Log("escape-cancel-requested");
         }
     }
 
