@@ -17,6 +17,10 @@ internal static class Program
             Environment.GetEnvironmentVariable("VOICE_INPUT_E2E_CANCEL"),
             "1",
             StringComparison.Ordinal);
+        var toggleMode = string.Equals(
+            Environment.GetEnvironmentVariable("VOICE_INPUT_E2E_TOGGLE"),
+            "1",
+            StringComparison.Ordinal);
         var clipboardSentinel = Environment.GetEnvironmentVariable("VOICE_INPUT_E2E_CLIPBOARD_SENTINEL");
         Console.OutputEncoding = Encoding.UTF8;
         Forms.Application.EnableVisualStyles();
@@ -88,7 +92,16 @@ internal static class Program
                 Forms.Clipboard.SetText(clipboardSentinel);
             }
 
-            SendActivationHotkey();
+            if (toggleMode)
+            {
+                SendToggleHotkey();
+                await Task.Delay(250);
+                SendToggleHotkey();
+            }
+            else
+            {
+                SendActivationHotkey();
+            }
 
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
             while (DateTime.UtcNow < deadline && textBox.Text != expectedText)
@@ -108,7 +121,7 @@ internal static class Program
                     return;
                 }
 
-                Console.WriteLine($"E2E_PASS text={textBox.Text}");
+                Console.WriteLine($"{(toggleMode ? "E2E_TOGGLE_PASS" : "E2E_PASS")} text={textBox.Text}");
                 Environment.ExitCode = 0;
             }
             else
@@ -177,6 +190,17 @@ internal static class Program
     private static void SendActivationHotkeyUp() => Send(
         [Keyboard(0x20, 0x0002), Keyboard(0x10, 0x0002), Keyboard(0x11, 0x0002)],
         "activation hotkey up");
+
+    private static void SendToggleHotkey() => Send(
+        [
+            Keyboard(0x11, 0),
+            Keyboard(0x10, 0),
+            Keyboard(0x4B, 0),
+            Keyboard(0x4B, 0x0002),
+            Keyboard(0x10, 0x0002),
+            Keyboard(0x11, 0x0002),
+        ],
+        "toggle hotkey");
 
     private static void SendEscape() => Send(
         [Keyboard(0x1B, 0), Keyboard(0x1B, 0x0002)],

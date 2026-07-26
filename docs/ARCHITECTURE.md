@@ -20,6 +20,7 @@
 ### Реализовано на 2026-07-26
 
 - `Ctrl + Shift + Space` запускает hold-to-talk с сохранением foreground `HWND`;
+- `Ctrl + Shift + K` запускает toggle-to-talk для назначенной через Logi Options+ голосовой клавиши Logitech;
 - WPF overlay использует `WS_EX_NOACTIVATE`;
 - NAudio/WASAPI записывает default microphone и преобразует поток в mono float32 16 kHz;
 - quiet-window segmenter режет итоговую запись на фрагменты до 20 секунд;
@@ -84,7 +85,8 @@ flowchart LR
 
 - Глобально получает нажатие комбинации через `RegisterHotKey`.
 - Текущий **hold-to-talk** начинает запись по `WM_HOTKEY`, а отпускание отслеживает коротким polling `GetAsyncKeyState`.
-- Low-level hook или Raw Input остаются вариантом, если polling покажет пропуски или понадобится toggle/переназначение.
+- Отдельный `Ctrl + Shift + K` использует manual release gate: первый `WM_HOTKEY` начинает запись, второй завершает её.
+- Low-level hook или Raw Input остаются вариантом, если polling покажет пропуски или понадобится произвольное переназначение.
 - По умолчанию не перехватывает обычный ввод и подавляет только явно назначенную комбинацию.
 
 ### 3.2 `TargetCapture`

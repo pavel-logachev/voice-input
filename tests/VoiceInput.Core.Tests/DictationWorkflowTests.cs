@@ -44,6 +44,31 @@ public sealed class DictationWorkflowTests
     }
 
     [Fact]
+    public async Task ActivationCanUseASessionSpecificReleaseGate()
+    {
+        var trace = new List<string>();
+        var manualGate = new ManualReleaseGate();
+        var workflow = new DictationWorkflow(
+            new TargetCapture(trace, new InputTarget((nint)42, 7)),
+            new Overlay(trace),
+            new ReleaseGate(trace),
+            new TextInserter(trace),
+            new Delay(trace),
+            new AudioRecorder(trace, new RecordedAudio([0.25f], 16_000)),
+            new Transcriber(trace, "Текст."));
+
+        var activation = workflow.TryActivateAsync(manualGate, CancellationToken.None);
+
+        Assert.False(activation.IsCompleted);
+        Assert.Contains("record:start", trace);
+        Assert.DoesNotContain("gate:wait", trace);
+
+        manualGate.Release();
+        Assert.True(await activation);
+        Assert.Contains("record:stop", trace);
+    }
+
+    [Fact]
     public async Task ConcurrentActivationIsIgnored()
     {
         var trace = new List<string>();
