@@ -12,6 +12,7 @@ public partial class MainWindow : Window, IActivationOverlay
     private const int ExtendedStyleIndex = -20;
     private const int NoActivateStyle = 0x08000000;
     private const int ToolWindowStyle = 0x00000080;
+    private const double CompactMinimumHeight = 64;
 
     public MainWindow()
     {
@@ -21,20 +22,26 @@ public partial class MainWindow : Window, IActivationOverlay
 
     public void Show(ActivationVisualState state)
     {
-        (StatusText.Text, DetailText.Text, StatusDot.Fill) = state switch
+        DetailText.Visibility = Visibility.Collapsed;
+        if (state is ActivationVisualState.Listening or ActivationVisualState.Processing)
         {
-            ActivationVisualState.Listening =>
-                ("Слушаю", "Говорите и отпустите Ctrl + Shift + Space", Brush("#22D3EE")),
-            ActivationVisualState.Processing =>
-                ("Распознаю локально", "GigaAM обрабатывает запись на этом компьютере", Brush("#A78BFA")),
-            ActivationVisualState.NoSpeech =>
-                ("Речь не распознана", "Попробуйте говорить ближе к микрофону", Brush("#F59E0B")),
-            ActivationVisualState.Inserting =>
-                ("Вставляю текст", "Фокус остаётся в исходном окне", Brush("#F59E0B")),
-            ActivationVisualState.Success =>
-                ("Готово", "Локальная расшифровка вставлена", Brush("#34D399")),
-            _ => throw new ArgumentOutOfRangeException(nameof(state), state, null),
-        };
+            var presentation = CompactOverlayPresentation.For(state);
+            StatusText.Text = presentation.Title;
+            SetActivity(presentation.Activity);
+        }
+        else
+        {
+            StatusText.Text = state switch
+            {
+                ActivationVisualState.NoSpeech => "Речь не распознана",
+                ActivationVisualState.Inserting => "Вставляю",
+                ActivationVisualState.Success => "Готово",
+                _ => throw new ArgumentOutOfRangeException(nameof(state), state, null),
+            };
+            SetActivity(null);
+        }
+
+        StatusText.Foreground = Brush("#F8FAFC");
 
         PositionAboveTaskbar();
         if (!IsVisible)
@@ -45,9 +52,11 @@ public partial class MainWindow : Window, IActivationOverlay
 
     public void ShowError(string message)
     {
-        StatusText.Text = "Ошибка диктовки";
+        SetActivity(null);
+        StatusText.Text = "Ошибка";
         DetailText.Text = message;
-        StatusDot.Fill = Brush("#FB7185");
+        DetailText.Visibility = Visibility.Visible;
+        StatusText.Foreground = Brush("#FB7185");
         PositionAboveTaskbar();
         if (!IsVisible)
         {
@@ -57,9 +66,13 @@ public partial class MainWindow : Window, IActivationOverlay
 
     public void ShowStatus(string title, string detail)
     {
+        SetActivity(null);
         StatusText.Text = title;
         DetailText.Text = detail;
-        StatusDot.Fill = Brush("#22D3EE");
+        DetailText.Visibility = string.IsNullOrWhiteSpace(detail)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        StatusText.Foreground = Brush("#F8FAFC");
         PositionAboveTaskbar();
         if (!IsVisible)
         {
@@ -67,14 +80,56 @@ public partial class MainWindow : Window, IActivationOverlay
         }
     }
 
+    public void SetRecordingLevel(float level)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            if (!Dispatcher.HasShutdownStarted)
+            {
+                _ = Dispatcher.BeginInvoke(() => SetRecordingLevel(level));
+            }
+
+            return;
+        }
+
+        if (AudioMeter.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        AudioMeter.SetLevel(level);
+    }
+
+    private void SetActivity(CompactOverlayActivity? activity)
+    {
+        MinHeight = CompactMinimumHeight;
+        ActivityHost.Visibility = activity.HasValue ? Visibility.Visible : Visibility.Collapsed;
+        AudioMeter.Visibility = activity == CompactOverlayActivity.Meter
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        ProcessingIndicator.Visibility = activity == CompactOverlayActivity.Progress
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        AudioMeter.Reset();
+    }
+
     private static SolidColorBrush Brush(string value) =>
         (SolidColorBrush)new BrushConverter().ConvertFromString(value)!;
 
     private void PositionAboveTaskbar()
     {
+        UpdateLayout();
         var workArea = SystemParameters.WorkArea;
-        Left = workArea.Left + ((workArea.Width - Width) / 2);
-        Top = workArea.Bottom - Height - 24;
+        var requestedWidth = double.IsNaN(Width) ? MinWidth : Width;
+        var placement = OverlayPositioning.BottomCenter(
+            new OverlayWorkArea(workArea.Left, workArea.Top, workArea.Width, workArea.Height),
+            ActualWidth,
+            ActualHeight,
+            requestedWidth,
+            MinHeight,
+            margin: 24);
+        Left = placement.Left;
+        Top = placement.Top;
     }
 
     private void ApplyNoActivateStyle()

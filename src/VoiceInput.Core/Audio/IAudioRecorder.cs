@@ -13,3 +13,8 @@ public interface IAudioRecorder
 
     ValueTask CancelAsync();
 }
+
+public interface IRecordingLevelSource
+{
+    event Action<float>? RecordingLevelChanged;
+}
