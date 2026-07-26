@@ -40,8 +40,14 @@ public sealed class DictationWorkflow(
         }
     }
 
-    public async Task<bool> TryActivateAsync(CancellationToken cancellationToken)
+    public Task<bool> TryActivateAsync(CancellationToken cancellationToken) =>
+        TryActivateAsync(releaseGate, cancellationToken);
+
+    public async Task<bool> TryActivateAsync(
+        IModifierReleaseGate sessionReleaseGate,
+        CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(sessionReleaseGate);
         if (Interlocked.CompareExchange(ref running, 1, 0) != 0)
         {
             return false;
@@ -70,7 +76,7 @@ public sealed class DictationWorkflow(
                 await audioRecorder.StartAsync(session.Token);
                 recordingStarted = true;
 
-                await releaseGate.WaitAsync(session.Token);
+                await sessionReleaseGate.WaitAsync(session.Token);
                 var audio = await audioRecorder.StopAsync(session.Token);
                 recordingStopped = true;
 

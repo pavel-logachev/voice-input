@@ -6,7 +6,8 @@ namespace VoiceInput.App;
 
 internal sealed class GlobalHotkeyRegistration : IDisposable
 {
-    private const int HotkeyId = 0x5649;
+    private const int HoldHotkeyId = 0x5649;
+    private const int ToggleHotkeyId = 0x564A;
     private const int HotkeyMessage = 0x0312;
     private const int LowLevelKeyboardHook = 13;
     private const int KeyDownMessage = 0x0100;
@@ -15,6 +16,7 @@ internal sealed class GlobalHotkeyRegistration : IDisposable
     private const uint ModifierControl = 0x0002;
     private const uint ModifierNoRepeat = 0x4000;
     private const uint VirtualKeySpace = 0x20;
+    private const uint VirtualKeyK = 0x4B;
     private const uint VirtualKeyEscape = 0x1B;
     private static readonly nint MessageOnlyWindow = new(-3);
 
@@ -39,7 +41,7 @@ internal sealed class GlobalHotkeyRegistration : IDisposable
 
         if (!NativeMethods.RegisterHotKey(
                 source.Handle,
-                HotkeyId,
+                HoldHotkeyId,
                 ModifierControl | ModifierShift | ModifierNoRepeat,
                 VirtualKeySpace))
         {
@@ -48,9 +50,24 @@ internal sealed class GlobalHotkeyRegistration : IDisposable
             source.Dispose();
             throw new Win32Exception(error, "Could not register Ctrl+Shift+Space as a global hotkey.");
         }
+
+        if (!NativeMethods.RegisterHotKey(
+                source.Handle,
+                ToggleHotkeyId,
+                ModifierControl | ModifierShift | ModifierNoRepeat,
+                VirtualKeyK))
+        {
+            var error = Marshal.GetLastWin32Error();
+            NativeMethods.UnregisterHotKey(source.Handle, HoldHotkeyId);
+            source.RemoveHook(WindowProcedure);
+            source.Dispose();
+            throw new Win32Exception(error, "Could not register Ctrl+Shift+K for the Logitech voice key.");
+        }
     }
 
     public event EventHandler? Activated;
+
+    public event EventHandler? ToggleActivated;
 
     public event EventHandler? CancellationRequested;
 
@@ -93,7 +110,8 @@ internal sealed class GlobalHotkeyRegistration : IDisposable
 
         disposed = true;
         DisableCancellation();
-        NativeMethods.UnregisterHotKey(source.Handle, HotkeyId);
+        NativeMethods.UnregisterHotKey(source.Handle, ToggleHotkeyId);
+        NativeMethods.UnregisterHotKey(source.Handle, HoldHotkeyId);
         source.RemoveHook(WindowProcedure);
         source.Dispose();
     }
@@ -105,10 +123,15 @@ internal sealed class GlobalHotkeyRegistration : IDisposable
         nint longParameter,
         ref bool handled)
     {
-        if (message == HotkeyMessage && wordParameter == HotkeyId)
+        if (message == HotkeyMessage && wordParameter == HoldHotkeyId)
         {
             handled = true;
             Activated?.Invoke(this, EventArgs.Empty);
+        }
+        else if (message == HotkeyMessage && wordParameter == ToggleHotkeyId)
+        {
+            handled = true;
+            ToggleActivated?.Invoke(this, EventArgs.Empty);
         }
         return nint.Zero;
     }

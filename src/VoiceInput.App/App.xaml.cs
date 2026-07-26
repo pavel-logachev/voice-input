@@ -25,6 +25,7 @@ public partial class App : System.Windows.Application, IDisposable
     private DictationWorkflow? workflow;
     private IAudioRecorder? recorder;
     private GigaAmWorkerClient? asrClient;
+    private ManualReleaseGate? toggleReleaseGate;
     private string? initializationError;
     private int sessionRunning;
     private readonly string? diagnosticLogPath = Environment.GetEnvironmentVariable("VOICE_INPUT_DIAGNOSTIC_LOG");
@@ -46,6 +47,7 @@ public partial class App : System.Windows.Application, IDisposable
         overlay = new MainWindow();
         hotkey = new GlobalHotkeyRegistration();
         hotkey.Activated += OnHotkeyActivated;
+        hotkey.ToggleActivated += OnToggleHotkeyActivated;
         hotkey.CancellationRequested += OnCancellationRequested;
 
         trayIcon = BuildTrayIcon();
@@ -77,6 +79,7 @@ public partial class App : System.Windows.Application, IDisposable
         if (hotkey is not null)
         {
             hotkey.Activated -= OnHotkeyActivated;
+            hotkey.ToggleActivated -= OnToggleHotkeyActivated;
             hotkey.CancellationRequested -= OnCancellationRequested;
             hotkey.Dispose();
             hotkey = null;
@@ -148,11 +151,11 @@ public partial class App : System.Windows.Application, IDisposable
             pendingRecorder = null;
 
             Log("dictation-ready");
-            UpdateStatus("Готово — Ctrl + Shift + Space");
+            UpdateStatus("Готово — Ctrl+Shift+Space или голосовая клавиша");
             trayIcon?.ShowBalloonTip(
                 5_000,
                 "Voice Input готов",
-                "Удерживайте Ctrl + Shift + Space, говорите и отпустите клавиши. Esc отменяет диктовку.",
+                "Удерживайте Ctrl + Shift + Space либо нажмите голосовую клавишу Logitech для старта и ещё раз для завершения. Esc отменяет диктовку.",
                 Forms.ToolTipIcon.Info);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -207,6 +210,43 @@ public partial class App : System.Windows.Application, IDisposable
 
     private async void OnHotkeyActivated(object? sender, EventArgs e)
     {
+        await RunDictationAsync();
+    }
+
+    private async void OnToggleHotkeyActivated(object? sender, EventArgs e)
+    {
+        var activeGate = Volatile.Read(ref toggleReleaseGate);
+        if (activeGate is not null)
+        {
+            if (activeGate.Release())
+            {
+                Log("toggle-hotkey-stop");
+            }
+
+            return;
+        }
+
+        var sessionGate = new ManualReleaseGate();
+        activeGate = Interlocked.CompareExchange(ref toggleReleaseGate, sessionGate, null);
+        if (activeGate is not null)
+        {
+            activeGate.Release();
+            return;
+        }
+
+        Log("toggle-hotkey-start");
+        try
+        {
+            await RunDictationAsync(sessionGate);
+        }
+        finally
+        {
+            Interlocked.CompareExchange(ref toggleReleaseGate, null, sessionGate);
+        }
+    }
+
+    private async Task RunDictationAsync(IModifierReleaseGate? sessionReleaseGate = null)
+    {
         Log($"hotkey workflow-ready={workflow is not null}");
         if (overlay is null)
         {
@@ -235,7 +275,14 @@ public partial class App : System.Windows.Application, IDisposable
         try
         {
             hotkey?.EnableCancellation();
-            await workflow.TryActivateAsync(lifetime.Token);
+            if (sessionReleaseGate is null)
+            {
+                await workflow.TryActivateAsync(lifetime.Token);
+            }
+            else
+            {
+                await workflow.TryActivateAsync(sessionReleaseGate, lifetime.Token);
+            }
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
         {
