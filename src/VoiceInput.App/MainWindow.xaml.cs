@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using VoiceInput.Core.Activation;
+using VoiceInput.Windows.Appearance;
 
 namespace VoiceInput.App;
 
@@ -17,8 +18,10 @@ public partial class MainWindow : Window, IActivationOverlay
     public MainWindow()
     {
         InitializeComponent();
-        SourceInitialized += (_, _) => ApplyNoActivateStyle();
+        SourceInitialized += OnSourceInitialized;
     }
+
+    public OverlayBackdropMode BackdropMode { get; private set; } = OverlayBackdropMode.TintOnly;
 
     public void Show(ActivationVisualState state)
     {
@@ -145,6 +148,16 @@ public partial class MainWindow : Window, IActivationOverlay
         {
             throw new Win32Exception(Marshal.GetLastPInvokeError(), "Could not apply the no-activate overlay style.");
         }
+    }
+
+    private void OnSourceInitialized(object? sender, EventArgs e)
+    {
+        ApplyNoActivateStyle();
+        var handle = new WindowInteropHelper(this).Handle;
+        BackdropMode = AcrylicBackdrop.Apply(handle);
+        Frame.Background = BackdropMode == OverlayBackdropMode.Acrylic
+            ? Brush("#1014171C")
+            : Brush("#D914171C");
     }
 
     private static class NativeMethods

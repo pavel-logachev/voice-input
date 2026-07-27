@@ -18,13 +18,13 @@
     <Border x:Name="Frame"
             Padding="14,10"
             CornerRadius="12"
-            Background="#F20B1220"
-            BorderBrush="#2B3A50"
+            Background="#D914171C"
+            BorderBrush="#32FFFFFF"
             BorderThickness="1">
         <Border.Effect>
-            <DropShadowEffect BlurRadius="16"
+            <DropShadowEffect BlurRadius="18"
                               Direction="270"
-                              Opacity="0.35"
+                              Opacity="0.28"
                               ShadowDepth="4"
                               Color="#020617" />
         </Border.Effect>

@@ -7,11 +7,13 @@ import json
 import os
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import sys
 
 RUNTIME_SHA256 = "9f536cb0fb839bd305e6d92fb214fd417c7718a416a6c7646a9911fbd56fdad5"
 MODEL_SHA256 = "7d69952fb431a8d7800ed9910dc61fea37d8406bfe96d10bf24c8bd4b7c68623"
+REQUIRED_ICON_SIZES = {16, 20, 24, 32, 48, 64, 128, 256}
 
 
 def sha256(path: Path) -> str:
@@ -28,6 +30,31 @@ def require_sha256(path: Path, expected: str) -> None:
     actual = sha256(path)
     if actual.lower() != expected.lower():
         raise RuntimeError(f"Checksum mismatch for {path.name}: expected {expected}, got {actual}")
+
+
+def require_icon_sizes(path: Path) -> None:
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    data = path.read_bytes()
+    if len(data) < 6:
+        raise RuntimeError(f"Invalid ICO header in {path}")
+    reserved, image_type, image_count = struct.unpack_from("<HHH", data)
+    if reserved != 0 or image_type != 1 or len(data) < 6 + (16 * image_count):
+        raise RuntimeError(f"Invalid ICO directory in {path}")
+
+    sizes: set[int] = set()
+    for index in range(image_count):
+        width, height = struct.unpack_from("<BB", data, 6 + (16 * index))
+        normalized_width = width or 256
+        normalized_height = height or 256
+        if normalized_width != normalized_height:
+            raise RuntimeError(f"Non-square icon image in {path}: {normalized_width}x{normalized_height}")
+        sizes.add(normalized_width)
+
+    if sizes != REQUIRED_ICON_SIZES:
+        raise RuntimeError(
+            f"Icon sizes mismatch for {path.name}: expected {sorted(REQUIRED_ICON_SIZES)}, got {sorted(sizes)}"
+        )
 
 
 def run(command: list[str], cwd: Path) -> None:
@@ -73,7 +100,7 @@ def publish(project: Path, output: Path, dotnet: Path, root: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build the self-contained Voice Input Windows installer.")
-    parser.add_argument("--version", default="0.4.2")
+    parser.add_argument("--version", default="0.5.0")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[1]
@@ -83,9 +110,11 @@ def main() -> int:
 
     runtime_archive = root / ".local" / "runtime" / "transcribe-native-0.1.3-windows-x86_64-cpu-vulkan.tar.gz"
     model_file = root / ".local" / "models" / "gigaam-v3-e2e-rnnt-Q4_K_M.gguf"
+    icon_file = root / "assets" / "VoiceInput.ico"
     print("Verifying pinned release assets…", flush=True)
     require_sha256(runtime_archive, RUNTIME_SHA256)
     require_sha256(model_file, MODEL_SHA256)
+    require_icon_sizes(icon_file)
 
     artifacts = root / "artifacts"
     app_publish = artifacts / "publish" / "win-x64"
@@ -140,6 +169,11 @@ def main() -> int:
         "version": args.version,
         "runtime": {"file": runtime_archive.name, "sha256": RUNTIME_SHA256},
         "model": {"file": model_file.name, "sha256": MODEL_SHA256},
+        "icon": {
+            "file": str(icon_file.relative_to(root)),
+            "sizes": sorted(REQUIRED_ICON_SIZES),
+            "sha256": sha256(icon_file),
+        },
         "application": {
             "file": app_executable.name,
             "size": app_executable.stat().st_size,

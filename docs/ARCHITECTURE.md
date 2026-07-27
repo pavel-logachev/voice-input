@@ -1,6 +1,6 @@
 # Voice Input — архитектурное видение
 
-**Статус:** 0.4 — installable local-first MVP; документ совмещает текущую реализацию и целевую архитектуру
+**Статус:** 0.5 — installable local-first MVP; документ совмещает текущую реализацию и целевую архитектуру
 **Целевая платформа:** Windows 10/11  
 **Суть:** резидентное приложение, которое по глобальной горячей клавише записывает речь, расшифровывает её и вставляет результат в то поле, где находился курсор.
 
@@ -17,11 +17,11 @@
 
 Главный критерий качества — не максимальное число AI-функций, а предсказуемость: вызов срабатывает всегда, фокус не теряется, буфер обмена не портится, текст не переписывается без разрешения.
 
-### Реализовано на 2026-07-26
+### Реализовано на 2026-07-28
 
 - `Ctrl + Shift + Space` запускает hold-to-talk с сохранением foreground `HWND`;
 - `Ctrl + Shift + K` запускает toggle-to-talk для назначенной через Logi Options+ голосовой клавиши Logitech;
-- WPF overlay использует `WS_EX_NOACTIVATE`;
+- WPF overlay использует `WS_EX_NOACTIVATE`, 85% Acrylic backdrop и tint-only fallback для High Contrast, отключённой прозрачности или недоступного compositor;
 - NAudio/WASAPI записывает default microphone и преобразует поток в mono float32 16 kHz;
 - quiet-window segmenter режет итоговую запись на фрагменты до 20 секунд;
 - отдельный .NET worker через P/Invoke загружает `transcribe.cpp 0.1.3` и GigaAM-v3 E2E RNNT Q4;
@@ -31,6 +31,7 @@
 - native Edit/RichEdit получают текст через `EM_REPLACESEL`, остальные контролы — через guarded clipboard paste;
 - foreground перепроверяется непосредственно перед вставкой, а новый clipboard пользователя никогда не затирается старым snapshot;
 - self-contained Windows installer включает приложение, worker, .NET runtime, native ASR runtime и модель.
+- executable, tray и installer используют единый multi-size знак Quiet Pulse.
 
 Пока не реализованы: password/UIA detection, отдельный UIA insertion adapter, выбор микрофона, worker watchdog/restart, автообновление и code signing.
 
@@ -178,6 +179,8 @@ public interface ITranscriber
 ### 3.8 `Overlay`
 
 - компактная карточка `200×64` logical pixels над taskbar без лишнего текста и пустого пространства;
+- background Acrylic размывает только содержимое рабочего стола за карточкой; текст и индикаторы остаются резкими, а 85% тёмный tint сохраняет контраст;
+- при High Contrast, отключённых системных эффектах, недоступном DWM composition или ошибке native backdrop API используется обычная тёмная подложка `#D914171C`;
 - пользовательские состояния: «Слушаю» с meter и «Распознаю» с короткой progress-анимацией; название модели и backend в overlay не показываются;
 - live-индикатор получает только нормализованный RMS из текущего WASAPI-потока: при тишине показывает ровную линию, при речи — историю движущихся полос;
 - обновление WPF выполняется вне audio callback; отдельный capture не запускается, PCM для визуализации не сохраняется;
