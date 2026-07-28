@@ -1,6 +1,20 @@
+<p align="center">
+  <img src="docs/assets/voice-input-banner.png" alt="Voice Input — локальная диктовка для Windows" width="100%">
+</p>
+
 # Voice Input
 
 Нативное local-first приложение для Windows: включите диктовку глобальной горячей клавишей — локальная расшифровка вставится в активное поле ввода.
+
+<p align="center">
+  <a href="https://github.com/pavel-logachev/voice-input/releases/latest">Последний release</a>
+  &nbsp;·&nbsp;
+  <a href="docs/ARCHITECTURE.md">Архитектура</a>
+  &nbsp;·&nbsp;
+  <a href="#приватность">Приватность</a>
+  &nbsp;·&nbsp;
+  <a href="#проверка">Проверка</a>
+</p>
 
 ## Статус
 
