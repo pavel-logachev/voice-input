@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using VoiceInput.Core.Activation;
+using VoiceInput.Windows.Appearance;
 
 namespace VoiceInput.App;
 
@@ -13,12 +14,15 @@ public partial class MainWindow : Window, IActivationOverlay
     private const int NoActivateStyle = 0x08000000;
     private const int ToolWindowStyle = 0x00000080;
     private const double CompactMinimumHeight = 64;
+    private const double CornerRadius = 12;
 
     public MainWindow()
     {
         InitializeComponent();
-        SourceInitialized += (_, _) => ApplyNoActivateStyle();
+        SourceInitialized += OnSourceInitialized;
     }
+
+    public OverlayBackdropMode BackdropMode { get; private set; } = OverlayBackdropMode.TintOnly;
 
     public void Show(ActivationVisualState state)
     {
@@ -144,6 +148,40 @@ public partial class MainWindow : Window, IActivationOverlay
         if (previousStyles == 0 && Marshal.GetLastPInvokeError() != 0)
         {
             throw new Win32Exception(Marshal.GetLastPInvokeError(), "Could not apply the no-activate overlay style.");
+        }
+    }
+
+    private void OnSourceInitialized(object? sender, EventArgs e)
+    {
+        ApplyNoActivateStyle();
+        var handle = new WindowInteropHelper(this).Handle;
+        BackdropMode = AcrylicBackdrop.Apply(handle);
+        if (BackdropMode == OverlayBackdropMode.Acrylic &&
+            !RoundedWindowRegion.TryApply(handle, CornerRadius))
+        {
+            AcrylicBackdrop.Disable(handle);
+            BackdropMode = OverlayBackdropMode.TintOnly;
+        }
+
+        Frame.Background = BackdropMode == OverlayBackdropMode.Acrylic
+            ? Brush("#1014171C")
+            : Brush("#D914171C");
+        if (BackdropMode == OverlayBackdropMode.Acrylic)
+        {
+            SizeChanged += OnWindowSizeChanged;
+        }
+    }
+
+    private void OnWindowSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (BackdropMode == OverlayBackdropMode.Acrylic &&
+            !RoundedWindowRegion.TryApply(handle, CornerRadius))
+        {
+            AcrylicBackdrop.Disable(handle);
+            BackdropMode = OverlayBackdropMode.TintOnly;
+            Frame.Background = Brush("#D914171C");
+            SizeChanged -= OnWindowSizeChanged;
         }
     }
 

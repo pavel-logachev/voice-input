@@ -208,17 +208,34 @@ public partial class App : System.Windows.Application, IDisposable
         exitItem.Click += (_, _) => Shutdown();
         menu.Items.Add(exitItem);
 
-        var processPath = Environment.ProcessPath;
-        applicationIcon = string.IsNullOrWhiteSpace(processPath)
-            ? null
-            : Icon.ExtractAssociatedIcon(processPath);
+        applicationIcon = LoadApplicationIcon();
 
         return new Forms.NotifyIcon
         {
             Text = "Voice Input — подготовка модели",
-            Icon = applicationIcon ?? SystemIcons.Application,
+            Icon = applicationIcon,
             ContextMenuStrip = menu,
         };
+    }
+
+    private static Icon LoadApplicationIcon()
+    {
+        var processPath = Environment.ProcessPath;
+        if (!string.IsNullOrWhiteSpace(processPath))
+        {
+            var associatedIcon = Icon.ExtractAssociatedIcon(processPath);
+            if (associatedIcon is not null)
+            {
+                return associatedIcon;
+            }
+        }
+
+        var resource = System.Windows.Application.GetResourceStream(
+            new Uri("pack://application:,,,/VoiceInput.ico", UriKind.Absolute))
+            ?? throw new InvalidOperationException("Embedded Voice Input icon is unavailable.");
+        using var stream = resource.Stream;
+        using var resourceIcon = new Icon(stream);
+        return (Icon)resourceIcon.Clone();
     }
 
     private async void OnHotkeyActivated(object? sender, EventArgs e)
