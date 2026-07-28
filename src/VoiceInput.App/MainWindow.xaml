@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:VoiceInput.App"
         Title="Voice Input"
+        Icon="pack://application:,,,/VoiceInput.ico"
         Width="200"
         MinHeight="64"
         SizeToContent="Height"

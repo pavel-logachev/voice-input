@@ -30,6 +30,9 @@ public static class AcrylicBackdrop
             : OverlayBackdropMode.TintOnly;
     }
 
+    public static void Disable(nint windowHandle) =>
+        _ = TrySetPolicy(windowHandle, state: 0, flags: 0, gradientColor: 0);
+
     private static bool IsTransparencyEnabled()
     {
         if (string.Equals(
@@ -51,7 +54,14 @@ public static class AcrylicBackdrop
         }
     }
 
-    private static bool TryApply(nint windowHandle)
+    private static bool TryApply(nint windowHandle) =>
+        TrySetPolicy(
+            windowHandle,
+            AccentEnableAcrylicBlurBehind,
+            AccentDrawAllBorders,
+            AcrylicTintAbgr);
+
+    private static bool TrySetPolicy(nint windowHandle, int state, int flags, uint gradientColor)
     {
         if (windowHandle == nint.Zero)
         {
@@ -60,9 +70,9 @@ public static class AcrylicBackdrop
 
         var policy = new AccentPolicy
         {
-            State = AccentEnableAcrylicBlurBehind,
-            Flags = AccentDrawAllBorders,
-            GradientColor = AcrylicTintAbgr,
+            State = state,
+            Flags = flags,
+            GradientColor = gradientColor,
         };
         var policySize = Marshal.SizeOf<AccentPolicy>();
         var policyPointer = Marshal.AllocHGlobal(policySize);

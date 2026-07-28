@@ -5,8 +5,7 @@ namespace VoiceInput.Windows.Tests.Appearance;
 public sealed class OverlayBackdropPolicyTests
 {
     [Theory]
-    [InlineData(17763)]
-    [InlineData(19045)]
+    [InlineData(22000)]
     [InlineData(22621)]
     [InlineData(26200)]
     public void SupportedWindowsUsesAcrylicWhenDesktopEffectsAreAvailable(int build)
@@ -41,7 +40,8 @@ public sealed class OverlayBackdropPolicyTests
     [Theory]
     [InlineData(6, 3, 9600)]
     [InlineData(10, 0, 17134)]
-    [InlineData(10, 0, 17762)]
+    [InlineData(10, 0, 19045)]
+    [InlineData(10, 0, 21999)]
     public void UnsupportedWindowsUsesTintOnly(int major, int minor, int build)
     {
         var mode = OverlayBackdropPolicy.Select(

@@ -21,7 +21,7 @@
 
 - `Ctrl + Shift + Space` запускает hold-to-talk с сохранением foreground `HWND`;
 - `Ctrl + Shift + K` запускает toggle-to-talk для назначенной через Logi Options+ голосовой клавиши Logitech;
-- WPF overlay использует `WS_EX_NOACTIVATE`, 85% Acrylic backdrop и tint-only fallback для High Contrast, отключённой прозрачности или недоступного compositor;
+- WPF overlay использует `WS_EX_NOACTIVATE`, 85% Acrylic backdrop на Windows 11 и tint-only fallback на Windows 10, при High Contrast, отключённой прозрачности или недоступном compositor;
 - NAudio/WASAPI записывает default microphone и преобразует поток в mono float32 16 kHz;
 - quiet-window segmenter режет итоговую запись на фрагменты до 20 секунд;
 - отдельный .NET worker через P/Invoke загружает `transcribe.cpp 0.1.3` и GigaAM-v3 E2E RNNT Q4;

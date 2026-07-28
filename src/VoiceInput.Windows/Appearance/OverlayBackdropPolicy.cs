@@ -8,7 +8,7 @@ public enum OverlayBackdropMode
 
 public static class OverlayBackdropPolicy
 {
-    private const int MinimumSupportedBuild = 17763;
+    private const int MinimumAcrylicBuild = 22000;
 
     public static OverlayBackdropMode Select(
         Version windowsVersion,
@@ -19,7 +19,7 @@ public static class OverlayBackdropPolicy
         ArgumentNullException.ThrowIfNull(windowsVersion);
 
         var supportedWindows = windowsVersion.Major > 10 ||
-            windowsVersion.Major == 10 && windowsVersion.Build >= MinimumSupportedBuild;
+            windowsVersion.Major == 10 && windowsVersion.Build >= MinimumAcrylicBuild;
         return supportedWindows && compositionEnabled && !highContrast && transparencyEnabled
             ? OverlayBackdropMode.Acrylic
             : OverlayBackdropMode.TintOnly;

@@ -59,9 +59,9 @@ Source: "..\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Voice Input"; Filename: "{app}\VoiceInput.App.exe"; WorkingDir: "{app}"
-Name: "{group}\Удалить Voice Input"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\Voice Input"; Filename: "{app}\VoiceInput.App.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\Voice Input"; Filename: "{app}\VoiceInput.App.exe"; WorkingDir: "{app}"; IconFilename: "{app}\VoiceInput.App.exe"; IconIndex: 0
+Name: "{group}\Удалить Voice Input"; Filename: "{uninstallexe}"; IconFilename: "{app}\VoiceInput.App.exe"; IconIndex: 0
+Name: "{autodesktop}\Voice Input"; Filename: "{app}\VoiceInput.App.exe"; WorkingDir: "{app}"; IconFilename: "{app}\VoiceInput.App.exe"; IconIndex: 0; Tasks: desktopicon
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Voice Input"; ValueData: """{app}\VoiceInput.App.exe"""; Flags: uninsdeletevalue; Tasks: autostart

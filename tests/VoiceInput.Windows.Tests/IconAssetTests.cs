@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace VoiceInput.Windows.Tests.Appearance;
 
 public sealed class IconAssetTests
@@ -27,6 +29,23 @@ public sealed class IconAssetTests
         Assert.Equal([16, 20, 24, 32, 48, 64, 128, 256], sizes.Order());
     }
 
+    [Fact]
+    public void BuiltApplicationExposesIconToWindowsShell()
+    {
+        var root = FindRepositoryRoot();
+        var executablePath = Path.Combine(
+            root.FullName,
+            "src",
+            "VoiceInput.App",
+            "bin",
+            "Release",
+            "net10.0-windows",
+            "VoiceInput.App.exe");
+
+        Assert.True(File.Exists(executablePath), $"Application executable not found: {executablePath}");
+        Assert.True(ExtractIconEx(executablePath, -1, null, null, 0) > 0);
+    }
+
     private static DirectoryInfo FindRepositoryRoot()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -41,4 +60,12 @@ public sealed class IconAssetTests
 
         throw new DirectoryNotFoundException("Could not locate the Voice Input repository root.");
     }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint ExtractIconEx(
+        string fileName,
+        int iconIndex,
+        nint[]? largeIcons,
+        nint[]? smallIcons,
+        uint iconCount);
 }

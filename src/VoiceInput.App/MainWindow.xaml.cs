@@ -14,6 +14,7 @@ public partial class MainWindow : Window, IActivationOverlay
     private const int NoActivateStyle = 0x08000000;
     private const int ToolWindowStyle = 0x00000080;
     private const double CompactMinimumHeight = 64;
+    private const double CornerRadius = 12;
 
     public MainWindow()
     {
@@ -155,9 +156,33 @@ public partial class MainWindow : Window, IActivationOverlay
         ApplyNoActivateStyle();
         var handle = new WindowInteropHelper(this).Handle;
         BackdropMode = AcrylicBackdrop.Apply(handle);
+        if (BackdropMode == OverlayBackdropMode.Acrylic &&
+            !RoundedWindowRegion.TryApply(handle, CornerRadius))
+        {
+            AcrylicBackdrop.Disable(handle);
+            BackdropMode = OverlayBackdropMode.TintOnly;
+        }
+
         Frame.Background = BackdropMode == OverlayBackdropMode.Acrylic
             ? Brush("#1014171C")
             : Brush("#D914171C");
+        if (BackdropMode == OverlayBackdropMode.Acrylic)
+        {
+            SizeChanged += OnWindowSizeChanged;
+        }
+    }
+
+    private void OnWindowSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (BackdropMode == OverlayBackdropMode.Acrylic &&
+            !RoundedWindowRegion.TryApply(handle, CornerRadius))
+        {
+            AcrylicBackdrop.Disable(handle);
+            BackdropMode = OverlayBackdropMode.TintOnly;
+            Frame.Background = Brush("#D914171C");
+            SizeChanged -= OnWindowSizeChanged;
+        }
     }
 
     private static class NativeMethods

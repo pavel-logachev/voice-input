@@ -5,6 +5,7 @@
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\VoiceInput.Core\VoiceInput.Core.csproj" />
     <ProjectReference Include="..\VoiceInput.Windows\VoiceInput.Windows.csproj" />
+    <Resource Include="..\..\assets\VoiceInput.ico" Link="VoiceInput.ico" />
   </ItemGroup>
 
   <PropertyGroup>
