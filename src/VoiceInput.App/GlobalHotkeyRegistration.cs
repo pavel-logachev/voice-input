@@ -61,7 +61,7 @@ internal sealed class GlobalHotkeyRegistration : IDisposable
             NativeMethods.UnregisterHotKey(source.Handle, HoldHotkeyId);
             source.RemoveHook(WindowProcedure);
             source.Dispose();
-            throw new Win32Exception(error, "Could not register Ctrl+Shift+K for the Logitech voice key.");
+            throw new Win32Exception(error, "Could not register Ctrl+Shift+K as a global hotkey.");
         }
     }
 

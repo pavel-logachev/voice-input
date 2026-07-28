@@ -53,11 +53,6 @@ public partial class App : System.Windows.Application, IDisposable
 
         trayIcon = BuildTrayIcon();
         trayIcon.Visible = true;
-        trayIcon.ShowBalloonTip(
-            5_000,
-            "Voice Input",
-            "Подготавливаю локальное распознавание. Первый запуск может занять несколько минут.",
-            Forms.ToolTipIcon.Info);
         _ = InitializeDictationAsync(lifetime.Token);
     }
 
@@ -125,12 +120,12 @@ public partial class App : System.Windows.Application, IDisposable
         IAudioRecorder? pendingRecorder = null;
         try
         {
-            var progress = new Progress<string>(UpdateStatus);
+            var progress = new Progress<string>(status => Log($"startup-progress: {status}"));
             var assets = await new LocalAsrAssetProvisioner().EnsureAsync(progress, cancellationToken);
             var workerExecutable = Path.Combine(AppContext.BaseDirectory, "worker", "VoiceInput.Asr.Worker.exe");
 
             pendingClient = new GigaAmWorkerClient(workerExecutable, assets.RuntimeDirectory, assets.ModelPath);
-            UpdateStatus("Загружаю GigaAM…");
+            Log("startup-progress: worker-start");
             await pendingClient.StartAsync(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -164,12 +159,7 @@ public partial class App : System.Windows.Application, IDisposable
             pendingRecorder = null;
 
             Log("dictation-ready");
-            UpdateStatus("Готово — Ctrl+Shift+Space или голосовая клавиша");
-            trayIcon?.ShowBalloonTip(
-                5_000,
-                "Voice Input готов",
-                "Удерживайте Ctrl + Shift + Space либо нажмите голосовую клавишу Logitech для старта и ещё раз для завершения. Esc отменяет диктовку.",
-                Forms.ToolTipIcon.Info);
+            UpdateStatus("Готово");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -178,7 +168,7 @@ public partial class App : System.Windows.Application, IDisposable
         {
             Log($"initialization-error: {exception}");
             initializationError = exception.Message;
-            UpdateStatus("Ошибка локальной модели");
+            UpdateStatus("Ошибка запуска");
             trayIcon?.ShowBalloonTip(
                 8_000,
                 "Voice Input — ошибка запуска",
@@ -198,11 +188,26 @@ public partial class App : System.Windows.Application, IDisposable
     private Forms.NotifyIcon BuildTrayIcon()
     {
         var menu = new Forms.ContextMenuStrip();
-        statusItem = new Forms.ToolStripMenuItem("Подготавливаю локальную модель…")
+        statusItem = new Forms.ToolStripMenuItem("Запуск…")
         {
             Enabled = false,
         };
         menu.Items.Add(statusItem);
+
+        var hotkeysItem = new Forms.ToolStripMenuItem("Горячие клавиши");
+        hotkeysItem.DropDownItems.Add(new Forms.ToolStripMenuItem("Удерживать для записи — Ctrl + Shift + Space")
+        {
+            Enabled = false,
+        });
+        hotkeysItem.DropDownItems.Add(new Forms.ToolStripMenuItem("Начать или завершить — Ctrl + Shift + K")
+        {
+            Enabled = false,
+        });
+        hotkeysItem.DropDownItems.Add(new Forms.ToolStripMenuItem("Отменить диктовку — Esc")
+        {
+            Enabled = false,
+        });
+        menu.Items.Add(hotkeysItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
         var exitItem = new Forms.ToolStripMenuItem("Выход");
         exitItem.Click += (_, _) => Shutdown();
@@ -212,7 +217,7 @@ public partial class App : System.Windows.Application, IDisposable
 
         return new Forms.NotifyIcon
         {
-            Text = "Voice Input — подготовка модели",
+            Text = "Voice Input — запуск",
             Icon = applicationIcon,
             ContextMenuStrip = menu,
         };
@@ -291,7 +296,7 @@ public partial class App : System.Windows.Application, IDisposable
             }
             else
             {
-                await ShowTransientStatusAsync("Готовлю локальную модель", "Первый запуск может занять несколько минут");
+                await ShowTransientStatusAsync("Voice Input запускается", "Повторите через несколько секунд");
             }
 
             return;
