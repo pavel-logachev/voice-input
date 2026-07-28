@@ -87,16 +87,17 @@ def base(size: tuple[int, int], margin: int) -> Image.Image:
 
 
 def render_banner() -> None:
-    size = (1600, 520)
-    im = base(size, 56)
+    size = (1600, 440)
+    im = base(size, 48)
     draw = ImageDraw.Draw(im)
-    tracking(draw, (84, 54), "VOICE INPUT / WINDOWS", font(19), MUTED, 2)
-    draw.text((80, 126), "Voice Input", font=font(72), fill=WHITE)
-    draw.text((84, 222), "LOCAL DICTATION. NO CLOUD REQUIRED.", font=font(25), fill=SIGNAL)
-    draw.text((84, 280), "Hold a hotkey, speak, and keep typing.", font=font(23), fill=MUTED)
-    waveform(draw, (90, 394), [34, 74, 126, 84])
-    paste_icon(im, (1080, 70, 1480, 470))
-    tracking(draw, (1054, 462), "RECORD / TRANSCRIBE / INSERT", font(16), MUTED, 2)
+    tracking(draw, (84, 42), "VOICE INPUT / WINDOWS", font(18), MUTED, 2)
+    draw.text((80, 102), "Voice Input", font=font(68), fill=WHITE)
+    draw.text((84, 190), "LOCAL DICTATION. NO CLOUD REQUIRED.", font=font(24), fill=SIGNAL)
+    draw.text((84, 242), "Hold a hotkey, speak, and keep typing.", font=font(22), fill=MUTED)
+    waveform(draw, (90, 348), [30, 66, 108, 70])
+    draw.line((1036, 62, 1036, 378), fill=GRID, width=1)
+    paste_icon(im, (1162, 70, 1432, 340))
+    tracking(draw, (1060, 374), "RECORD / TRANSCRIBE / INSERT", font(15), MUTED, 2)
     im = Image.alpha_composite(im, noise(size)).convert("RGB")
     im.save(OUT / "voice-input-banner.png", optimize=True, quality=94)
 
