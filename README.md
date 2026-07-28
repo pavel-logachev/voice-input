@@ -16,12 +16,7 @@
   <a href="#проверка">Проверка</a>
 </p>
 
-<p align="center">
-  <a href="https://github.com/pavel-logachev/voice-input/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/pavel-logachev/voice-input?display_name=tag&style=flat-square"></a>
-  <a href="https://github.com/pavel-logachev/voice-input/actions/workflows/ci.yml"><img alt="CI status" src="https://img.shields.io/github/actions/workflow/status/pavel-logachev/voice-input/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%2F%2011-4758D7?style=flat-square">
-  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/pavel-logachev/voice-input?style=flat-square"></a>
-</p>
+<p align="center"><a href="https://github.com/pavel-logachev/voice-input/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/pavel-logachev/voice-input?display_name=tag&style=flat-square"></a> <a href="https://github.com/pavel-logachev/voice-input/actions/workflows/ci.yml"><img alt="CI status" src="https://img.shields.io/github/actions/workflow/status/pavel-logachev/voice-input/ci.yml?branch=main&style=flat-square&label=CI"></a> <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%2F%2011-4758D7?style=flat-square"> <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/pavel-logachev/voice-input?style=flat-square"></a></p>
 
 <p align="center">
   <img src="docs/assets/voice-input-product.png" alt="Реальные состояния установленного Voice Input: запись и локальное распознавание" width="100%">
