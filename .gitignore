@@ -19,6 +19,8 @@ _ReSharper*/
 *.nupkg
 *.snupkg
 packages/
+__pycache__/
+*.pyc
 
 # Local models and native runtime artifacts
 models/
