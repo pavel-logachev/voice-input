@@ -16,6 +16,10 @@ SIGNAL = "#CFFAF4"
 WHITE = "#F8FAFF"
 MUTED = "#AAB5D3"
 GRID = "#39436C"
+PAPER = "#F3F5FA"
+PAPER_INK = "#1C2440"
+PAPER_MUTED = "#66708B"
+PAPER_LINE = "#D8DDEA"
 FONT_DIR = Path("C:/Windows/Fonts")
 SANS = FONT_DIR / "bahnschrift.ttf"
 
@@ -113,7 +117,41 @@ def render_social() -> None:
     im.save(OUT / "voice-input-social-preview.png", optimize=True, quality=94)
 
 
+def render_product_demo() -> None:
+    size = (1440, 620)
+    im = Image.new("RGB", size, PAPER)
+    draw = ImageDraw.Draw(im)
+
+    draw.rectangle((0, 0, size[0], 172), fill=INK)
+    draw.rectangle((0, 0, 12, size[1]), fill=INDIGO)
+    draw.rectangle((12, 0, 16, size[1]), fill=SIGNAL)
+    tracking(draw, (74, 38), "ACTUAL INSTALLED APP / WINDOWS 11", font(17), MUTED, 2)
+    draw.text((70, 76), "Two states. One quiet overlay.", font=font(46), fill=WHITE)
+
+    items = [
+        (94, "01 / LISTENING", "installed-listening.png"),
+        (782, "02 / TRANSCRIBING", "installed-processing.png"),
+    ]
+    for x, label, filename in items:
+        tracking(draw, (x, 212), label, font(18), PAPER_MUTED, 2)
+        screenshot = Image.open(OUT / "product" / filename).convert("RGB").resize((544, 224), Image.Resampling.LANCZOS)
+        shadow = Image.new("RGBA", size, (0, 0, 0, 0))
+        shadow_draw = ImageDraw.Draw(shadow)
+        shadow_draw.rounded_rectangle((x - 12, 266, x + 556, 514), radius=20, fill=(18, 28, 63, 30))
+        shadow = shadow.filter(ImageFilter.GaussianBlur(16))
+        im = Image.alpha_composite(im.convert("RGBA"), shadow).convert("RGB")
+        draw = ImageDraw.Draw(im)
+        draw.rounded_rectangle((x - 1, 253, x + 545, 479), radius=16, fill="#FFFFFF", outline=PAPER_LINE, width=1)
+        im.paste(screenshot, (x, 254))
+
+    draw.line((70, 546, 1370, 546), fill=PAPER_LINE, width=2)
+    tracking(draw, (70, 566), "RECORD / TRANSCRIBE / INSERT", font(16), PAPER_INK, 2)
+    tracking(draw, (1054, 566), "LOCAL / PRIVATE", font(16), PAPER_MUTED, 2)
+    im.save(OUT / "voice-input-product.png", optimize=True, quality=94)
+
+
 if __name__ == "__main__":
     render_banner()
     render_social()
+    render_product_demo()
     print("Rendered Voice Input GitHub assets")
