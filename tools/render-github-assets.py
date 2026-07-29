@@ -35,6 +35,12 @@ def tracking(draw: ImageDraw.ImageDraw, xy: tuple[int, int], text: str, face: Im
         x += int(draw.textlength(char, font=face)) + spacing
 
 
+def tracking_width(draw: ImageDraw.ImageDraw, text: str, face: ImageFont.FreeTypeFont, spacing: int) -> int:
+    if not text:
+        return 0
+    return sum(int(draw.textlength(char, font=face)) for char in text) + spacing * (len(text) - 1)
+
+
 def noise(size: tuple[int, int], opacity: int = 10) -> Image.Image:
     rng = Random(5101)
     layer = Image.new("RGBA", size, (0, 0, 0, 0))
@@ -96,8 +102,12 @@ def render_banner() -> None:
     draw.text((84, 242), "Hold a hotkey, speak, and keep typing.", font=font(22), fill=MUTED)
     waveform(draw, (90, 348), [30, 66, 108, 70])
     draw.line((1036, 62, 1036, 378), fill=GRID, width=1)
-    paste_icon(im, (1162, 70, 1432, 340))
-    tracking(draw, (1060, 374), "RECORD / TRANSCRIBE / INSERT", font(15), MUTED, 2)
+    icon_box = (1162, 70, 1432, 340)
+    paste_icon(im, icon_box)
+    caption = "RECORD / TRANSCRIBE / INSERT"
+    caption_face = font(15)
+    caption_x = (icon_box[0] + icon_box[2] - tracking_width(draw, caption, caption_face, 2)) // 2
+    tracking(draw, (caption_x, 374), caption, caption_face, MUTED, 2)
     im = Image.alpha_composite(im, noise(size)).convert("RGB")
     im.save(OUT / "voice-input-banner.png", optimize=True, quality=94)
 
