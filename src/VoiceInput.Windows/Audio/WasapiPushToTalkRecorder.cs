@@ -1,4 +1,3 @@
-using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 using VoiceInput.Core.Audio;
@@ -8,24 +7,45 @@ namespace VoiceInput.Windows.Audio;
 public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSource, IDisposable
 {
     private const int OutputSampleRate = 16_000;
-    private static readonly TimeSpan MaximumRecording = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan StopWaitTimeout = TimeSpan.FromSeconds(5);
 
     private readonly object gate = new();
-    private WasapiCapture? capture;
+    private readonly Func<IAudioCaptureSession> captureFactory;
+    private IAudioCaptureSession? capture;
     private MemoryStream? rawAudio;
     private WaveFormat? capturedFormat;
     private BufferedWaveProvider? levelWaveBuffer;
     private ISampleProvider? levelSampleProvider;
     private float[]? levelSamples;
     private TaskCompletionSource? recordingStopped;
+    private Task cleanupTask = Task.CompletedTask;
     private long maximumRawBytes;
+    private bool stopRequested;
     private bool disposed;
+
+    public WasapiPushToTalkRecorder()
+        : this(static () => new WasapiCaptureSession())
+    {
+    }
+
+    /// <summary>Records from the microphone the delegate names at the moment each recording starts (null: Windows default).</summary>
+    public WasapiPushToTalkRecorder(Func<string?> microphoneId)
+        : this(() => new WasapiCaptureSession((microphoneId ?? throw new ArgumentNullException(nameof(microphoneId)))()))
+    {
+    }
+
+    internal WasapiPushToTalkRecorder(Func<IAudioCaptureSession> captureFactory)
+    {
+        this.captureFactory = captureFactory ?? throw new ArgumentNullException(nameof(captureFactory));
+    }
 
     public event Action<float>? RecordingLevelChanged;
 
+    /// <summary>The longest single recording; the capture stops by itself when it is reached.</summary>
+    public static TimeSpan MaximumRecordingDuration { get; } = TimeSpan.FromMinutes(10);
+
     public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
 
         await Task.Run(
@@ -33,58 +53,82 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
             {
                 lock (gate)
                 {
+                    ObjectDisposedException.ThrowIf(disposed, this);
                     if (capture is not null)
                     {
                         throw new InvalidOperationException("Audio recording is already active.");
                     }
 
-                    var nextCapture = new WasapiCapture();
-                    capturedFormat = nextCapture.WaveFormat;
-                    maximumRawBytes = checked((long)(capturedFormat.AverageBytesPerSecond * MaximumRecording.TotalSeconds));
-                    rawAudio = new MemoryStream(capacity: (int)Math.Min(maximumRawBytes, 4 * 1024 * 1024));
-                    recordingStopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                    InitializeLevelTracking(capturedFormat);
+                    if (!cleanupTask.IsCompleted)
+                    {
+                        throw new InvalidOperationException(
+                            "Микрофон ещё завершает предыдущую запись. Повторите через несколько секунд.");
+                    }
 
-                    nextCapture.DataAvailable += OnDataAvailable;
-                    nextCapture.RecordingStopped += OnRecordingStopped;
-                    capture = nextCapture;
-
+                    var session = capture = captureFactory();
                     try
                     {
-                        nextCapture.StartRecording();
+                        capturedFormat = session.WaveFormat;
+                        maximumRawBytes = checked((long)(capturedFormat.AverageBytesPerSecond * MaximumRecordingDuration.TotalSeconds));
+                        rawAudio = new MemoryStream(capacity: (int)Math.Min(maximumRawBytes, 4 * 1024 * 1024));
+                        recordingStopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                        Observe(recordingStopped.Task);
+                        stopRequested = false;
+                        InitializeLevelTracking(capturedFormat);
+
+                        session.DataAvailable += OnDataAvailable;
+                        session.RecordingStopped += OnRecordingStopped;
+                        session.StartRecording();
                     }
                     catch
                     {
-                        CleanupRecording(nextCapture);
+                        CleanupRecording(session);
                         throw;
                     }
                 }
             },
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask<RecordedAudio> StopAsync(CancellationToken cancellationToken)
     {
-        var (currentCapture, stoppedTask) = GetActiveRecording();
-        currentCapture.StopRecording();
-        await stoppedTask.WaitAsync(cancellationToken);
+        IAudioCaptureSession currentCapture;
+        Task stoppedTask;
+        lock (gate)
+        {
+            currentCapture = capture ?? throw new InvalidOperationException("Audio recording is not active.");
+            stoppedTask = recordingStopped?.Task ?? throw new InvalidOperationException("The recording completion signal is missing.");
+        }
+
+        RequestStop(currentCapture);
+        await stoppedTask.WaitAsync(StopWaitTimeout, cancellationToken).ConfigureAwait(false);
 
         byte[] bytes;
         WaveFormat format;
         lock (gate)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             bytes = rawAudio?.ToArray() ?? [];
             format = capturedFormat ?? throw new InvalidOperationException("The capture format was not available.");
-            CleanupRecording(currentCapture);
         }
 
-        var samples = ConvertToMono16Khz(bytes, format);
-        return new RecordedAudio(samples, OutputSampleRate);
+        await CleanupRecording(currentCapture).WaitAsync(StopWaitTimeout, cancellationToken).ConfigureAwait(false);
+        return await Task.Run(
+            () => new RecordedAudio(ConvertToMono16Khz(bytes, format), OutputSampleRate),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public Task WaitForRecordingEndAsync(CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            return recordingStopped?.Task.WaitAsync(cancellationToken) ?? Task.CompletedTask;
+        }
     }
 
     public async ValueTask CancelAsync()
     {
-        WasapiCapture? currentCapture;
+        IAudioCaptureSession? currentCapture;
         Task? stoppedTask;
         lock (gate)
         {
@@ -97,40 +141,50 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
             return;
         }
 
-        currentCapture.StopRecording();
+        RequestStop(currentCapture);
         if (stoppedTask is not null)
         {
             try
             {
-                await stoppedTask;
+                await stoppedTask.WaitAsync(StopWaitTimeout).ConfigureAwait(false);
             }
-            catch
+            catch (Exception)
             {
                 // Cancellation is best-effort; the original workflow error remains authoritative.
             }
         }
 
-        lock (gate)
-        {
-            CleanupRecording(currentCapture);
-        }
+        await CleanupRecording(currentCapture).WaitAsync(StopWaitTimeout).ConfigureAwait(false);
     }
 
     public void Dispose()
     {
-        if (disposed)
+        lock (gate)
         {
-            return;
+            if (disposed)
+            {
+                return;
+            }
+
+            disposed = true;
         }
 
-        disposed = true;
-        CancelAsync().AsTask().GetAwaiter().GetResult();
+        try
+        {
+            CancelAsync().AsTask().GetAwaiter().GetResult();
+        }
+        catch (Exception)
+        {
+            // Shutting down: nothing useful can be done with a late audio error.
+        }
+
         GC.SuppressFinalize(this);
     }
 
     private void OnDataAvailable(object? sender, WaveInEventArgs eventArgs)
     {
         float? level = null;
+        IAudioCaptureSession? limitStop = null;
         lock (gate)
         {
             if (!ReferenceEquals(sender, capture) || rawAudio is null)
@@ -138,24 +192,31 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
                 return;
             }
 
-            var remaining = maximumRawBytes - rawAudio.Length;
-            if (remaining <= 0)
+            if (rawAudio.Length < maximumRawBytes)
             {
-                return;
-            }
-
-            var bytesToWrite = (int)Math.Min(remaining, eventArgs.BytesRecorded);
-            rawAudio.Write(eventArgs.Buffer, 0, bytesToWrite);
-
-            if (levelWaveBuffer is not null && levelSampleProvider is not null && levelSamples is not null)
-            {
-                levelWaveBuffer.AddSamples(eventArgs.Buffer, 0, bytesToWrite);
-                var sampleCount = levelSampleProvider.Read(levelSamples, 0, levelSamples.Length);
-                if (sampleCount > 0)
+                var bytesToWrite = (int)Math.Min(maximumRawBytes - rawAudio.Length, eventArgs.BytesRecorded);
+                rawAudio.Write(eventArgs.Buffer, 0, bytesToWrite);
+                if (rawAudio.Length >= maximumRawBytes)
                 {
-                    level = AudioLevelNormalizer.FromSamples(levelSamples.AsSpan(0, sampleCount));
+                    limitStop = capture;
+                }
+
+                if (levelWaveBuffer is not null && levelSampleProvider is not null && levelSamples is not null)
+                {
+                    levelWaveBuffer.AddSamples(eventArgs.Buffer, 0, bytesToWrite);
+                    var sampleCount = levelSampleProvider.Read(levelSamples, 0, levelSamples.Length);
+                    if (sampleCount > 0)
+                    {
+                        level = AudioLevelNormalizer.FromSamples(levelSamples.AsSpan(0, sampleCount));
+                    }
                 }
             }
+        }
+
+        if (limitStop is not null)
+        {
+            // Stop outside the device callback and outside the lock.
+            _ = Task.Run(() => RequestStop(limitStop));
         }
 
         if (level.HasValue)
@@ -184,25 +245,44 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
         }
     }
 
-    private (WasapiCapture Capture, Task StoppedTask) GetActiveRecording()
+    private void RequestStop(IAudioCaptureSession session)
     {
+        TaskCompletionSource? completion;
         lock (gate)
         {
-            return (
-                capture ?? throw new InvalidOperationException("Audio recording is not active."),
-                recordingStopped?.Task ?? throw new InvalidOperationException("The recording completion signal is missing."));
+            if (!ReferenceEquals(capture, session) || stopRequested)
+            {
+                return;
+            }
+
+            stopRequested = true;
+            completion = recordingStopped;
+        }
+
+        try
+        {
+            session.StopRecording();
+        }
+        catch (Exception exception)
+        {
+            completion?.TrySetException(exception);
         }
     }
 
-    private void CleanupRecording(WasapiCapture recording)
+    // Disposing a capture device can block, so it runs off the caller's thread. A new recording
+    // cannot start until the previous device is released.
+    private Task CleanupRecording(IAudioCaptureSession recording)
     {
-        recording.DataAvailable -= OnDataAvailable;
-        recording.RecordingStopped -= OnRecordingStopped;
-        recording.Dispose();
-        rawAudio?.Dispose();
-
-        if (ReferenceEquals(capture, recording))
+        lock (gate)
         {
+            if (!ReferenceEquals(capture, recording))
+            {
+                return cleanupTask;
+            }
+
+            recording.DataAvailable -= OnDataAvailable;
+            recording.RecordingStopped -= OnRecordingStopped;
+            var buffer = rawAudio;
             capture = null;
             rawAudio = null;
             capturedFormat = null;
@@ -211,8 +291,29 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
             levelSamples = null;
             recordingStopped = null;
             maximumRawBytes = 0;
+            stopRequested = false;
+            cleanupTask = Task.Run(() =>
+            {
+                try
+                {
+                    recording.Dispose();
+                }
+                finally
+                {
+                    buffer?.Dispose();
+                }
+            });
+            Observe(cleanupTask);
+            return cleanupTask;
         }
     }
+
+    private static void Observe(Task task) =>
+        task.ContinueWith(
+            static completed => completed.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
 
     private void InitializeLevelTracking(WaveFormat format)
     {
@@ -241,7 +342,7 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
         {
             RecordingLevelChanged?.Invoke(level);
         }
-        catch
+        catch (Exception)
         {
             // A visual meter must never interrupt microphone capture.
         }
@@ -276,6 +377,6 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
             result.AddRange(buffer.AsSpan(0, read).ToArray());
         }
 
-        return result.ToArray();
+        return [.. result];
     }
 }

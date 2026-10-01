@@ -26,6 +26,21 @@ public sealed class DictationWorkflow(
 
     public DictationWorkflowState State { get; private set; } = DictationWorkflowState.Idle;
 
+    /// <summary>
+    /// True while a session can still be cancelled: it is recording or transcribing, not yet inserting text.
+    /// </summary>
+    public bool CanCancel
+    {
+        get
+        {
+            lock (sessionSync)
+            {
+                return activeSession is { IsCancellationRequested: false }
+                    && State is DictationWorkflowState.Recording or DictationWorkflowState.Processing;
+            }
+        }
+    }
+
     public bool CancelActive()
     {
         lock (sessionSync)
@@ -76,7 +91,7 @@ public sealed class DictationWorkflow(
                 await audioRecorder.StartAsync(session.Token);
                 recordingStarted = true;
 
-                await sessionReleaseGate.WaitAsync(session.Token);
+                await WaitForReleaseOrCaptureEndAsync(sessionReleaseGate, session);
                 var audio = await audioRecorder.StopAsync(session.Token);
                 recordingStopped = true;
 
@@ -102,13 +117,28 @@ public sealed class DictationWorkflow(
             }
             finally
             {
-                if (recordingStarted && !recordingStopped)
+                try
                 {
-                    await audioRecorder.CancelAsync();
+                    if (recordingStarted && !recordingStopped)
+                    {
+                        await audioRecorder.CancelAsync();
+                    }
                 }
-
-                overlay.Hide();
-                State = DictationWorkflowState.Idle;
+                catch (Exception)
+                {
+                    // Cleanup is best-effort; the original workflow outcome stays authoritative.
+                }
+                finally
+                {
+                    try
+                    {
+                        overlay.Hide();
+                    }
+                    finally
+                    {
+                        State = DictationWorkflowState.Idle;
+                    }
+                }
             }
         }
         finally
@@ -124,4 +154,34 @@ public sealed class DictationWorkflow(
             Interlocked.Exchange(ref running, 0);
         }
     }
+
+    // Recording ends either when the user releases the hotkey or when the capture stops by itself
+    // (device removed, recording limit reached). Whichever happens first stops the recording.
+    private async Task WaitForReleaseOrCaptureEndAsync(
+        IModifierReleaseGate sessionReleaseGate,
+        CancellationTokenSource session)
+    {
+        using var race = CancellationTokenSource.CreateLinkedTokenSource(session.Token);
+        var released = sessionReleaseGate.WaitAsync(race.Token).AsTask();
+        var captureEnded = audioRecorder.WaitForRecordingEndAsync(race.Token);
+        Observe(released);
+        Observe(captureEnded);
+        try
+        {
+            var first = await Task.WhenAny(released, captureEnded).ConfigureAwait(false);
+            session.Token.ThrowIfCancellationRequested();
+            await first.ConfigureAwait(false);
+        }
+        finally
+        {
+            await race.CancelAsync().ConfigureAwait(false);
+        }
+    }
+
+    private static void Observe(Task task) =>
+        task.ContinueWith(
+            static completed => completed.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
 }

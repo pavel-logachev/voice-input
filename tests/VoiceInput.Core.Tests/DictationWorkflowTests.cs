@@ -1,4 +1,4 @@
-using VoiceInput.Core.Activation;
+﻿using VoiceInput.Core.Activation;
 using VoiceInput.Core.Audio;
 using VoiceInput.Core.Transcription;
 
@@ -190,6 +190,132 @@ public sealed class DictationWorkflowTests
         Assert.Equal(DictationWorkflowState.Idle, workflow.State);
     }
 
+    [Fact]
+    public async Task CaptureThatEndsByItselfStopsTheRecordingWithoutAHotkeyRelease()
+    {
+        var trace = new List<string>();
+        var gate = new BlockingReleaseGate();
+        var recorder = new AudioRecorder(trace, new RecordedAudio([0.25f], 16_000));
+        var workflow = new DictationWorkflow(
+            new TargetCapture(trace, new InputTarget((nint)42, 7)),
+            new Overlay(trace),
+            gate,
+            new TextInserter(trace),
+            new Delay(trace),
+            recorder,
+            new Transcriber(trace, "Автостоп."));
+
+        var activation = workflow.TryActivateAsync(CancellationToken.None);
+        await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.DoesNotContain("record:stop", trace);
+
+        recorder.CaptureEnded.TrySetResult();
+
+        Assert.True(await activation);
+        Assert.Contains("record:stop", trace);
+        Assert.Contains("insert:42:Автостоп.", trace);
+    }
+
+    [Fact]
+    public async Task FailedCaptureEndsTheSessionWithTheDeviceError()
+    {
+        var trace = new List<string>();
+        var gate = new BlockingReleaseGate();
+        var recorder = new AudioRecorder(trace, new RecordedAudio([0.25f], 16_000));
+        var workflow = new DictationWorkflow(
+            new TargetCapture(trace, new InputTarget((nint)42, 7)),
+            new Overlay(trace),
+            gate,
+            new TextInserter(trace),
+            new Delay(trace),
+            recorder,
+            new Transcriber(trace, "Не должно вставляться."));
+
+        var activation = workflow.TryActivateAsync(CancellationToken.None);
+        await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        recorder.CaptureEnded.TrySetException(new InvalidOperationException("device removed"));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => activation);
+        Assert.Equal("device removed", error.Message);
+        Assert.DoesNotContain(trace, entry => entry.StartsWith("insert:", StringComparison.Ordinal));
+        Assert.Equal(DictationWorkflowState.Idle, workflow.State);
+    }
+
+    [Fact]
+    public async Task CanCancelIsTrueOnlyWhileRecordingOrRecognising()
+    {
+        var trace = new List<string>();
+        var gate = new BlockingReleaseGate();
+        var transcriber = new BlockingTranscriber(trace, "Текст.");
+        var workflow = new DictationWorkflow(
+            new TargetCapture(trace, new InputTarget((nint)42, 7)),
+            new Overlay(trace),
+            gate,
+            new TextInserter(trace),
+            new Delay(trace),
+            new AudioRecorder(trace, new RecordedAudio([0.25f], 16_000)),
+            transcriber);
+        Assert.False(workflow.CanCancel);
+
+        var activation = workflow.TryActivateAsync(CancellationToken.None);
+        await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.True(workflow.CanCancel);
+
+        gate.Release.TrySetResult();
+        await transcriber.Entered.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.True(workflow.CanCancel);
+
+        transcriber.Release.TrySetResult();
+        Assert.True(await activation);
+        Assert.False(workflow.CanCancel);
+    }
+
+    [Fact]
+    public async Task CanCancelBecomesFalseOnceCancellationWasRequested()
+    {
+        var trace = new List<string>();
+        var gate = new BlockingReleaseGate();
+        var workflow = new DictationWorkflow(
+            new TargetCapture(trace, new InputTarget((nint)42, 7)),
+            new Overlay(trace),
+            gate,
+            new TextInserter(trace),
+            new Delay(trace),
+            new AudioRecorder(trace, new RecordedAudio([0.25f], 16_000)),
+            new Transcriber(trace, "Текст."));
+        var activation = workflow.TryActivateAsync(CancellationToken.None);
+        await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.True(workflow.CancelActive());
+
+        Assert.False(workflow.CanCancel);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => activation);
+    }
+
+    [Fact]
+    public async Task OverlayIsHiddenAndStateResetEvenWhenRecorderCleanupFails()
+    {
+        var trace = new List<string>();
+        var gate = new BlockingReleaseGate();
+        var recorder = new AudioRecorder(trace, new RecordedAudio([0.25f], 16_000)) { FailOnCancel = true };
+        var workflow = new DictationWorkflow(
+            new TargetCapture(trace, new InputTarget((nint)42, 7)),
+            new Overlay(trace),
+            gate,
+            new TextInserter(trace),
+            new Delay(trace),
+            recorder,
+            new Transcriber(trace, "Текст."));
+        var activation = workflow.TryActivateAsync(CancellationToken.None);
+        await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.True(workflow.CancelActive());
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => activation);
+        Assert.Equal("overlay:hide", trace[^1]);
+        Assert.Equal(DictationWorkflowState.Idle, workflow.State);
+    }
+
     private sealed class TargetCapture(List<string> trace, InputTarget target) : IInputTargetCapture
     {
         public InputTarget Capture()
@@ -277,11 +403,20 @@ public sealed class DictationWorkflowTests
             return ValueTask.FromResult(audio);
         }
 
+        public bool FailOnCancel { get; init; }
+
         public ValueTask CancelAsync()
         {
             trace.Add("record:cancel");
-            return ValueTask.CompletedTask;
+            return FailOnCancel
+                ? ValueTask.FromException(new InvalidOperationException("device busy"))
+                : ValueTask.CompletedTask;
         }
+
+        public TaskCompletionSource CaptureEnded { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task WaitForRecordingEndAsync(CancellationToken cancellationToken) =>
+            CaptureEnded.Task.WaitAsync(cancellationToken);
     }
 
     private sealed class Transcriber(List<string> trace, string text) : ITranscriber

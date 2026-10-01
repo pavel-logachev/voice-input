@@ -12,6 +12,11 @@ public interface IAudioRecorder
     ValueTask<RecordedAudio> StopAsync(CancellationToken cancellationToken);
 
     ValueTask CancelAsync();
+
+    /// <summary>
+    /// Completes when the capture ends on its own (device removed, recording limit reached) or is stopped.
+    /// </summary>
+    Task WaitForRecordingEndAsync(CancellationToken cancellationToken);
 }
 
 public interface IRecordingLevelSource

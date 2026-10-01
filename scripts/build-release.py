@@ -100,7 +100,12 @@ def publish(project: Path, output: Path, dotnet: Path, root: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build the self-contained Voice Input Windows installer.")
-    parser.add_argument("--version", default="0.5.0")
+    parser.add_argument("--version", default="1.0.0")
+    parser.add_argument(
+        "--with-local",
+        action="store_true",
+        help="Also bundle the optional local (GigaAM) engine: worker, runtime archive and model (about 300 MB).",
+    )
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[1]
@@ -108,13 +113,16 @@ def main() -> int:
     if not dotnet.is_file():
         raise FileNotFoundError(dotnet)
 
-    runtime_archive = root / ".local" / "runtime" / "transcribe-native-0.1.3-windows-x86_64-cpu-vulkan.tar.gz"
-    model_file = root / ".local" / "models" / "gigaam-v3-e2e-rnnt-Q4_K_M.gguf"
     icon_file = root / "assets" / "VoiceInput.ico"
-    print("Verifying pinned release assets…", flush=True)
-    require_sha256(runtime_archive, RUNTIME_SHA256)
-    require_sha256(model_file, MODEL_SHA256)
+    print("Verifying release assets...", flush=True)
     require_icon_sizes(icon_file)
+
+    runtime_archive = model_file = None
+    if args.with_local:
+        runtime_archive = root / ".local" / "runtime" / "transcribe-native-0.1.3-windows-x86_64-cpu-vulkan.tar.gz"
+        model_file = root / ".local" / "models" / "gigaam-v3-e2e-rnnt-Q4_K_M.gguf"
+        require_sha256(runtime_archive, RUNTIME_SHA256)
+        require_sha256(model_file, MODEL_SHA256)
 
     artifacts = root / "artifacts"
     app_publish = artifacts / "publish" / "win-x64"
@@ -125,41 +133,43 @@ def main() -> int:
             shutil.rmtree(path)
         path.mkdir(parents=True)
 
-    publish(root / "src" / "VoiceInput.Asr.Worker" / "VoiceInput.Asr.Worker.csproj", worker_publish, dotnet, root)
     publish(root / "src" / "VoiceInput.App" / "VoiceInput.App.csproj", app_publish, dotnet, root)
+    app_executable = app_publish / "VoiceInput.App.exe"
+    if not app_executable.is_file():
+        raise RuntimeError("Self-contained application executable is missing after publish.")
 
+    # A source build copies the worker next to the application; an ordinary installer ships without it.
     app_worker = app_publish / "worker"
     if app_worker.exists():
         shutil.rmtree(app_worker)
-    app_worker.mkdir()
-    for source in worker_publish.iterdir():
-        destination = app_worker / source.name
-        if source.is_dir():
-            shutil.copytree(source, destination)
-        else:
-            shutil.copy2(source, destination)
-
-    app_executable = app_publish / "VoiceInput.App.exe"
-    worker_executable = app_worker / "VoiceInput.Asr.Worker.exe"
-    if not app_executable.is_file() or not worker_executable.is_file():
-        raise RuntimeError("Self-contained application or worker executable is missing after publish.")
+    worker_executable = None
+    if args.with_local:
+        publish(root / "src" / "VoiceInput.Asr.Worker" / "VoiceInput.Asr.Worker.csproj", worker_publish, dotnet, root)
+        app_worker.mkdir()
+        for source in worker_publish.iterdir():
+            destination = app_worker / source.name
+            if source.is_dir():
+                shutil.copytree(source, destination)
+            else:
+                shutil.copy2(source, destination)
+        worker_executable = app_worker / "VoiceInput.Asr.Worker.exe"
+        if not worker_executable.is_file():
+            raise RuntimeError("The local ASR worker executable is missing after publish.")
 
     iscc = find_iscc()
     installer_name = f"VoiceInput-Setup-{args.version}"
-    run(
-        [
-            str(iscc),
-            "/Qp",
-            f"/O{installer_output}",
-            f"/F{installer_name}",
-            f"/DAppVersion={args.version}",
-            f"/DPublishDir={app_publish}",
-            f"/DRuntimeArchive={runtime_archive}",
-            f"/DModelFile={model_file}",
-            str(root / "installer" / "VoiceInput.iss"),
-        ],
-        root,
-    )
+    command = [
+        str(iscc),
+        "/Qp",
+        f"/O{installer_output}",
+        f"/F{installer_name}",
+        f"/DAppVersion={args.version}",
+        f"/DPublishDir={app_publish}",
+    ]
+    if args.with_local:
+        command += [f"/DRuntimeArchive={runtime_archive}", f"/DModelFile={model_file}"]
+    command.append(str(root / "installer" / "VoiceInput.iss"))
+    run(command, root)
 
     setup = installer_output / f"{installer_name}.exe"
     if not setup.is_file():
@@ -167,8 +177,7 @@ def main() -> int:
 
     manifest = {
         "version": args.version,
-        "runtime": {"file": runtime_archive.name, "sha256": RUNTIME_SHA256},
-        "model": {"file": model_file.name, "sha256": MODEL_SHA256},
+        "engines": ["openai", "local"] if args.with_local else ["openai"],
         "icon": {
             "file": str(icon_file.relative_to(root)),
             "sizes": sorted(REQUIRED_ICON_SIZES),
@@ -179,17 +188,20 @@ def main() -> int:
             "size": app_executable.stat().st_size,
             "sha256": sha256(app_executable),
         },
-        "worker": {
-            "file": f"worker/{worker_executable.name}",
-            "size": worker_executable.stat().st_size,
-            "sha256": sha256(worker_executable),
-        },
         "installer": {
             "file": setup.name,
             "size": setup.stat().st_size,
             "sha256": sha256(setup),
         },
     }
+    if args.with_local:
+        manifest["runtime"] = {"file": runtime_archive.name, "sha256": RUNTIME_SHA256}
+        manifest["model"] = {"file": model_file.name, "sha256": MODEL_SHA256}
+        manifest["worker"] = {
+            "file": f"worker/{worker_executable.name}",
+            "size": worker_executable.stat().st_size,
+            "sha256": sha256(worker_executable),
+        }
     manifest_path = installer_output / f"VoiceInput-Setup-{args.version}.manifest.json"
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -199,8 +211,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    try:
-        raise SystemExit(main())
-    except Exception as exception:
-        print(f"RELEASE_BUILD_FAIL {exception}", file=sys.stderr)
-        raise
+    raise SystemExit(main())

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\VoiceInput.App\VoiceInput.App.csproj" />
+    <!-- The windows load their icon through pack://application, which resolves to this executable here. -->
+    <Resource Include="..\..\assets\VoiceInput.ico" Link="VoiceInput.ico" />
+  </ItemGroup>
+
+</Project>

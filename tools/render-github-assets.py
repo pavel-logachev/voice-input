@@ -74,11 +74,16 @@ def paste_icon(im: Image.Image, box: tuple[int, int, int, int]) -> None:
     im.alpha_composite(icon, (x, y))
 
 
+WAVE_COLOURS = ["#A99BFF", "#D698D8", "#FF8FB1", "#FFC56D"]
+
+
 def waveform(draw: ImageDraw.ImageDraw, origin: tuple[int, int], heights: list[int], width: int = 18, gap: int = 15) -> None:
+    """The icon's waveform: a violet-to-amber sweep that resolves into a steady white cursor."""
     x0, cy = origin
     x = x0
-    for h in heights:
-        draw.rounded_rectangle((x, cy - h // 2, x + width, cy + h // 2), radius=width // 2, fill=SIGNAL)
+    for index, h in enumerate(heights):
+        colour = WAVE_COLOURS[min(index, len(WAVE_COLOURS) - 1)]
+        draw.rounded_rectangle((x, cy - h // 2, x + width, cy + h // 2), radius=width // 2, fill=colour)
         x += width + gap
     draw.rounded_rectangle((x + 18, cy - 56, x + 18 + width, cy + 56), radius=width // 2, fill=WHITE)
 
@@ -98,7 +103,7 @@ def render_banner() -> None:
     draw = ImageDraw.Draw(im)
     tracking(draw, (84, 42), "VOICE INPUT / WINDOWS", font(18), MUTED, 2)
     draw.text((80, 102), "Voice Input", font=font(68), fill=WHITE)
-    draw.text((84, 190), "LOCAL DICTATION. NO CLOUD REQUIRED.", font=font(24), fill=SIGNAL)
+    draw.text((84, 190), "DICTATION IN ANY TEXT FIELD.", font=font(24), fill=SIGNAL)
     draw.text((84, 242), "Hold a hotkey, speak, and keep typing.", font=font(22), fill=MUTED)
     waveform(draw, (90, 348), [30, 66, 108, 70])
     draw.line((1036, 62, 1036, 378), fill=GRID, width=1)
@@ -116,48 +121,59 @@ def render_social() -> None:
     size = (1280, 640)
     im = base(size, 54)
     draw = ImageDraw.Draw(im)
-    tracking(draw, (84, 60), "LOCAL-FIRST / WINDOWS", font(18), MUTED, 2)
+    tracking(draw, (84, 60), "OPENAI / WINDOWS", font(18), MUTED, 2)
     draw.text((80, 146), "Voice", font=font(82), fill=WHITE)
     draw.text((80, 230), "Input", font=font(82), fill=WHITE)
     draw.text((84, 348), "Russian speech to the field", font=font(27), fill=SIGNAL)
     draw.text((84, 386), "where recording started.", font=font(27), fill=SIGNAL)
     waveform(draw, (88, 520), [28, 62, 104, 72])
     paste_icon(im, (790, 94, 1160, 464))
-    tracking(draw, (790, 492), "OFFLINE / PRIVATE / INSTALLABLE", font(16), MUTED, 1)
+    tracking(draw, (790, 492), "TRAY APP / OWN API KEY / ESC TO CANCEL", font(16), MUTED, 1)
     im = Image.alpha_composite(im, noise(size)).convert("RGB")
     im.save(OUT / "voice-input-social-preview.png", optimize=True, quality=94)
 
 
 def render_product_demo() -> None:
-    size = (1440, 620)
+    """The real 1.0 interface: overlay states on the left, the settings window on the right."""
+    size = (1440, 800)
     im = Image.new("RGB", size, PAPER)
     draw = ImageDraw.Draw(im)
 
     draw.rectangle((0, 0, size[0], 172), fill=INK)
     draw.rectangle((0, 0, 12, size[1]), fill=INDIGO)
     draw.rectangle((12, 0, 16, size[1]), fill=SIGNAL)
-    tracking(draw, (74, 38), "ACTUAL INSTALLED APP / WINDOWS 11", font(17), MUTED, 2)
-    draw.text((70, 76), "Two states. One quiet overlay.", font=font(46), fill=WHITE)
+    tracking(draw, (74, 38), "VOICE INPUT 1.0 / WINDOWS 10 AND 11", font(17), MUTED, 2)
+    draw.text((70, 76), "One quiet overlay. One small settings window.", font=font(46), fill=WHITE)
 
-    items = [
-        (94, "01 / LISTENING", "installed-listening.png"),
-        (782, "02 / TRANSCRIBING", "installed-processing.png"),
+    product = OUT / "product"
+    overlay_w, overlay_h = 400, 144
+    cells = [
+        (70, 214, "01 / LISTENING", "listening.png"),
+        (500, 214, "02 / RECOGNISING", "processing.png"),
+        (70, 414, "03 / DONE", "success.png"),
+        (500, 414, "04 / PROBLEM, IN PLAIN WORDS", "error.png"),
     ]
-    for x, label, filename in items:
-        tracking(draw, (x, 212), label, font(18), PAPER_MUTED, 2)
-        screenshot = Image.open(OUT / "product" / filename).convert("RGB").resize((544, 224), Image.Resampling.LANCZOS)
-        shadow = Image.new("RGBA", size, (0, 0, 0, 0))
-        shadow_draw = ImageDraw.Draw(shadow)
-        shadow_draw.rounded_rectangle((x - 12, 266, x + 556, 514), radius=20, fill=(18, 28, 63, 30))
-        shadow = shadow.filter(ImageFilter.GaussianBlur(16))
-        im = Image.alpha_composite(im.convert("RGBA"), shadow).convert("RGB")
-        draw = ImageDraw.Draw(im)
-        draw.rounded_rectangle((x - 1, 253, x + 545, 479), radius=16, fill="#FFFFFF", outline=PAPER_LINE, width=1)
-        im.paste(screenshot, (x, 254))
+    for x, y, label, filename in cells:
+        tracking(draw, (x, y), label, font(15), PAPER_MUTED, 2)
+        shot = Image.open(product / filename).convert("RGB").resize((overlay_w, overlay_h), Image.Resampling.LANCZOS)
+        draw.rounded_rectangle((x - 1, y + 30, x + overlay_w, y + 30 + overlay_h), radius=14, outline=PAPER_LINE, width=1)
+        im.paste(shot, (x, y + 31))
 
-    draw.line((70, 546, 1370, 546), fill=PAPER_LINE, width=2)
-    tracking(draw, (70, 566), "RECORD / TRANSCRIBE / INSERT", font(16), PAPER_INK, 2)
-    tracking(draw, (1054, 566), "LOCAL / PRIVATE", font(16), PAPER_MUTED, 2)
+    settings = Image.open(product / "settings.png").convert("RGB")
+    settings_w = 286
+    settings_h = round(settings.height * settings_w / settings.width)
+    settings = settings.resize((settings_w, settings_h), Image.Resampling.LANCZOS)
+    sx, sy = 1050, 214
+    tracking(draw, (sx, sy), "05 / SETTINGS", font(15), PAPER_MUTED, 2)
+    shadow = Image.new("RGBA", size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle((sx - 8, sy + 34, sx + settings_w + 8, sy + 38 + settings_h), radius=18, fill=(18, 28, 63, 40))
+    im = Image.alpha_composite(im.convert("RGBA"), shadow.filter(ImageFilter.GaussianBlur(14))).convert("RGB")
+    draw = ImageDraw.Draw(im)
+    im.paste(settings, (sx, sy + 31))
+
+    draw.line((70, 742, 1370, 742), fill=PAPER_LINE, width=2)
+    tracking(draw, (70, 760), "RECORD / TRANSCRIBE / INSERT", font(16), PAPER_INK, 2)
+    tracking(draw, (1010, 760), "RENDERED FROM THE REAL WINDOWS", font(16), PAPER_MUTED, 2)
     im.save(OUT / "voice-input-product.png", optimize=True, quality=94)
 
 
