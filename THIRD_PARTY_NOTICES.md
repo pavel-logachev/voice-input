@@ -1,27 +1,27 @@
-# Third-party notices
+# Уведомления о сторонних компонентах
 
-## Shipped in the Voice Input 1.0 installer
+## Что входит в установщик Voice Input 1.0
 
-| Component | Purpose | License | Source |
+| Компонент | Назначение | Лицензия | Источник |
 |---|---|---|---|
-| .NET 10 runtime (self-contained) | Application runtime, WPF, Windows Forms | MIT | https://github.com/dotnet/runtime |
-| NAudio 2.2.1 | Windows WASAPI capture and in-memory resampling | MIT | https://github.com/naudio/NAudio |
+| среда выполнения .NET 10 (самодостаточная) | Среда выполнения приложения, WPF, Windows Forms | MIT | https://github.com/dotnet/runtime |
+| NAudio 2.2.1 | Захват звука Windows WASAPI и передискретизация в памяти | MIT | https://github.com/naudio/NAudio |
 
-## External service
+## Внешний сервис
 
-Speech recognition in the installed application is performed by the OpenAI audio transcription API with the user's own API key. OpenAI is a service, not a bundled component; its terms and data-handling policy apply to audio sent to it.
+Распознавание речи в установленном приложении выполняет API транскрипции звука OpenAI с вашим собственным API-ключом. OpenAI — сервис, а не встроенный компонент; к отправляемому ему звуку применяются его условия и политика обработки данных.
 
-## Optional local engine (source builds only)
+## Необязательный локальный движок (только сборки из исходников)
 
-Source builds that include the `VoiceInput.Asr.Worker` project can use a local engine. Its files are downloaded on first use and are not part of the installer.
+Сборки из исходников, включающие проект `VoiceInput.Asr.Worker`, могут использовать локальный движок. Его файлы скачиваются при первом использовании и не входят в установщик.
 
-| Component | Purpose | License | Source |
+| Компонент | Назначение | Лицензия | Источник |
 |---|---|---|---|
-| transcribe.cpp 0.1.3 | Native GGUF speech-recognition runtime | MIT | https://github.com/handy-computer/transcribe.cpp |
-| ggml | CPU/Vulkan tensor backend distributed with transcribe.cpp | MIT | https://github.com/ggml-org/ggml |
-| GigaAM-v3 E2E RNNT Q4_K_M | Russian ASR model | MIT | https://huggingface.co/handy-computer/gigaam-v3-e2e-rnnt-gguf |
-| GigaAM-v3 | Original model and training code | MIT | https://github.com/salute-developers/GigaAM |
+| transcribe.cpp 0.1.3 | Нативная среда распознавания речи GGUF | MIT | https://github.com/handy-computer/transcribe.cpp |
+| ggml | Тензорный бэкенд для CPU/Vulkan, поставляется с transcribe.cpp | MIT | https://github.com/ggml-org/ggml |
+| GigaAM-v3 E2E RNNT Q4_K_M | Модель распознавания русской речи | MIT | https://huggingface.co/handy-computer/gigaam-v3-e2e-rnnt-gguf |
+| GigaAM-v3 | Исходная модель и код обучения | MIT | https://github.com/salute-developers/GigaAM |
 
-The downloaded transcribe.cpp runtime archive includes its own `licenses/` directory, which Voice Input preserves when extracting the runtime into `%LOCALAPPDATA%\VoiceInput`.
+Скачанный архив среды transcribe.cpp содержит собственный каталог `licenses/`, который Voice Input сохраняет при распаковке среды в `%LOCALAPPDATA%\VoiceInput`.
 
-This notice is informational and does not replace the license text distributed by each upstream project.
+Это уведомление носит справочный характер и не заменяет текст лицензии, распространяемый каждым исходным проектом.

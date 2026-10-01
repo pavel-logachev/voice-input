@@ -1,9 +1,9 @@
-# Quiet Pulse
+# Тихий пульс
 
-The Voice Input mark is a waveform that resolves into a text cursor: four rounded bars of uneven height rise and fall, then one steadier, brighter stroke stands still. Sound becomes writing; nothing else is drawn.
+Знак Voice Input — волна, которая превращается в текстовый курсор: четыре скруглённые полосы разной высоты поднимаются и опускаются, а затем одна, более спокойная и яркая, замирает. Звук становится письмом; ничего больше не нарисовано.
 
-The bars sweep from violet through rose to amber, the same colours the overlay uses for the stages of a dictation. They sit on a deep indigo tile with a very soft highlight on its upper edge and a faint luminous halo around the mark. The cursor is almost white with a warm core, so it stays the brightest point at every size.
+Полосы переходят от фиолетового через розовый к янтарному — теми же цветами оверлей отмечает стадии диктовки. Они лежат на плитке глубокого индиго с очень мягким бликом по верхнему краю и слабым светящимся ореолом вокруг знака. Курсор почти белый с тёплой сердцевиной, поэтому остаётся самой яркой точкой в любом размере.
 
-Detail is earned only when it survives reduction. At 32 pixels and below the halo disappears, the mark uses fewer, thicker bars and the cursor moves closer to the edge, so the tray glyph still reads as "waveform plus cursor". The tile is a superellipse, not a rounded rectangle, which sits correctly next to Windows 11 app tiles; a hairline rim keeps its edge readable on both light and dark taskbars.
+Детали оставлены только там, где они переживают уменьшение. При 32 пикселях и меньше ореол исчезает, знак использует меньше и более толстых полос, а курсор смещается ближе к краю, так что значок в трее по-прежнему читается как «волна плюс курсор». Плитка — суперэллипс, а не скруглённый прямоугольник, что правильно смотрится рядом с плитками приложений Windows 11; тонкая кромка сохраняет читаемость края на светлой и тёмной панели задач.
 
-One source drives every surface: executable, tray, installer, Start menu, desktop shortcut, Installed Apps entry, the window headers and the release artwork. `tools/render-icon.py` draws all sizes (16 to 256 px) from code, so the mark never drifts between files.
+Один источник питает все поверхности: исполняемый файл, трей, установщик, меню «Пуск», ярлык на рабочем столе, запись в «Установленных приложениях», заголовки окон и оформление релиза. `tools/render-icon.py` рисует все размеры (от 16 до 256 px) кодом, поэтому знак не расходится между файлами.
