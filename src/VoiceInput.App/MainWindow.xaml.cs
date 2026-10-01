@@ -3,6 +3,9 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
+using System.Windows.Threading;
 using VoiceInput.Core.Activation;
 using VoiceInput.Windows.Appearance;
 using Color = System.Windows.Media.Color;
@@ -15,12 +18,16 @@ public partial class MainWindow : Window, IActivationOverlay
     private const int ExtendedStyleIndex = -20;
     private const int NoActivateStyle = 0x08000000;
     private const int ToolWindowStyle = 0x00000080;
-    private const double CompactMinimumHeight = 72;
-    private const double CornerRadius = 14;
+    private const double CompactMinimumHeight = 76;
+    private const double CornerRadius = 16;
     private const double ScreenMargin = 28;
 
     private static readonly BrushConverter BrushConverter = new();
+    private static readonly Color MeterIdle = Color.FromRgb(68, 72, 84);
 
+    private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private DateTime listeningSince;
+    private int hideVersion;
     private bool shutdownRequested;
     private bool closed;
 
@@ -28,7 +35,12 @@ public partial class MainWindow : Window, IActivationOverlay
     {
         InitializeComponent();
         SourceInitialized += OnSourceInitialized;
-        Closed += (_, _) => closed = true;
+        Closed += (_, _) =>
+        {
+            closed = true;
+            timer.Stop();
+        };
+        timer.Tick += (_, _) => UpdateTimerText();
     }
 
     public OverlayBackdropMode BackdropMode { get; private set; } = OverlayBackdropMode.TintOnly;
@@ -75,6 +87,7 @@ public partial class MainWindow : Window, IActivationOverlay
         }
 
         ApplyStateAppearance(state);
+        UpdateMotion(state);
         ShowWithoutActivation();
     }
 
@@ -85,6 +98,7 @@ public partial class MainWindow : Window, IActivationOverlay
         DetailText.Text = message;
         DetailText.Visibility = Visibility.Visible;
         ApplyAccent("#FF6B83", "#80FF6B83");
+        StopMotion();
         ShowWithoutActivation();
     }
 
@@ -95,6 +109,7 @@ public partial class MainWindow : Window, IActivationOverlay
         DetailText.Text = detail;
         DetailText.Visibility = string.IsNullOrWhiteSpace(detail) ? Visibility.Collapsed : Visibility.Visible;
         ApplyAccent("#A99BFF", "#78A99BFF");
+        StopMotion();
         ShowWithoutActivation();
     }
 
@@ -116,7 +131,35 @@ public partial class MainWindow : Window, IActivationOverlay
         }
     }
 
-    void IActivationOverlay.Hide() => Hide();
+    void IActivationOverlay.Hide()
+    {
+        if (!IsVisible || closed)
+        {
+            return;
+        }
+
+        if (!SystemParameters.ClientAreaAnimation || SystemParameters.HighContrast)
+        {
+            StopMotion();
+            Hide();
+            return;
+        }
+
+        var version = ++hideVersion;
+        var fadeOut = (Storyboard)Resources["FadeOutStoryboard"];
+        EventHandler? completed = null;
+        completed = (_, _) =>
+        {
+            fadeOut.Completed -= completed;
+            if (version == hideVersion && !closed)
+            {
+                StopMotion();
+                Hide();
+            }
+        };
+        fadeOut.Completed += completed;
+        fadeOut.Begin(this, true);
+    }
 
     private static SolidColorBrush Brush(string value)
     {
@@ -127,10 +170,27 @@ public partial class MainWindow : Window, IActivationOverlay
 
     private void ShowWithoutActivation()
     {
+        hideVersion++;
         PositionAboveTaskbar();
-        if (!IsVisible)
+        if (IsVisible)
         {
-            base.Show();
+            // A fade-out may be running; bring the card back at once.
+            ((Storyboard)Resources["FadeOutStoryboard"]).Stop(this);
+            Frame.Opacity = 1;
+            FrameShift.Y = 0;
+            return;
+        }
+
+        Frame.Opacity = 0;
+        base.Show();
+        if (SystemParameters.ClientAreaAnimation && !SystemParameters.HighContrast)
+        {
+            ((Storyboard)Resources["FadeInStoryboard"]).Begin(this, true);
+        }
+        else
+        {
+            Frame.Opacity = 1;
+            FrameShift.Y = 0;
         }
     }
 
@@ -144,6 +204,47 @@ public partial class MainWindow : Window, IActivationOverlay
             : Visibility.Collapsed;
         CancelHint.Visibility = activity.HasValue ? Visibility.Visible : Visibility.Collapsed;
         AudioMeter.Reset();
+    }
+
+    // Listening: a ripple and a running clock. Recognising and typing: the light breathes. Everything else is still.
+    private void UpdateMotion(ActivationVisualState state)
+    {
+        StopMotion();
+        if (!SystemParameters.ClientAreaAnimation || SystemParameters.HighContrast)
+        {
+            return;
+        }
+
+        switch (state)
+        {
+            case ActivationVisualState.Listening:
+                listeningSince = DateTime.UtcNow;
+                TimerText.Text = "0:00";
+                TimerText.Visibility = Visibility.Visible;
+                timer.Start();
+                ((Storyboard)Resources["RippleStoryboard"]).Begin(this, true);
+                break;
+            case ActivationVisualState.Processing:
+            case ActivationVisualState.Inserting:
+                ((Storyboard)Resources["BreathStoryboard"]).Begin(this, true);
+                break;
+        }
+    }
+
+    private void StopMotion()
+    {
+        timer.Stop();
+        TimerText.Visibility = Visibility.Collapsed;
+        ((Storyboard)Resources["RippleStoryboard"]).Stop(this);
+        ((Storyboard)Resources["BreathStoryboard"]).Stop(this);
+        Ripple.Opacity = 0;
+        TallyLens.Opacity = 1;
+    }
+
+    private void UpdateTimerText()
+    {
+        var elapsed = DateTime.UtcNow - listeningSince;
+        TimerText.Text = $"{(int)elapsed.TotalMinutes}:{elapsed.Seconds:00}";
     }
 
     // One colour per stage: red while recording, violet while recognising, amber when nothing was heard,
@@ -168,6 +269,7 @@ public partial class MainWindow : Window, IActivationOverlay
         {
             TallyLens.Fill = SystemColors.HighlightBrush;
             TallyRing.BorderBrush = SystemColors.HighlightBrush;
+            Ripple.Stroke = SystemColors.HighlightBrush;
             ProcessingCue.Fill = SystemColors.HighlightBrush;
             StatusText.Foreground = SystemColors.WindowTextBrush;
             return;
@@ -176,8 +278,14 @@ public partial class MainWindow : Window, IActivationOverlay
         var fill = Brush(accent);
         TallyLens.Fill = fill;
         TallyRing.BorderBrush = Brush(ring);
+        Ripple.Stroke = fill;
         ProcessingCue.Fill = fill;
         StatusText.Foreground = Brush("#FAFAFC");
+        var colour = fill.Color;
+        AudioMeter.SetPalette(colour, MeterIdle);
+        var glow = new DropShadowEffect { Color = colour, BlurRadius = 9, ShadowDepth = 0, Opacity = 0.55 };
+        glow.Freeze();
+        AudioMeter.Effect = glow;
     }
 
     private void PositionAboveTaskbar()
@@ -237,6 +345,7 @@ public partial class MainWindow : Window, IActivationOverlay
             Frame.BorderBrush = SystemColors.WindowTextBrush;
             Frame.Effect = null;
             DetailText.Foreground = SystemColors.WindowTextBrush;
+            TimerText.Foreground = SystemColors.WindowTextBrush;
             CancelHint.Background = SystemColors.WindowBrush;
             CancelHint.BorderBrush = SystemColors.WindowTextBrush;
             CancelKeyText.Foreground = SystemColors.WindowTextBrush;
@@ -245,14 +354,15 @@ public partial class MainWindow : Window, IActivationOverlay
             return;
         }
 
-        Frame.Background = BackdropMode == OverlayBackdropMode.Acrylic ? Brush("#20101218") : Brush("#F20E1016");
+        Frame.Background = BackdropMode == OverlayBackdropMode.Acrylic ? Brush("#24101218") : Brush("#F20E1016");
         Frame.BorderBrush = Brush("#38FFFFFF");
         DetailText.Foreground = Brush("#B7BBC7");
+        TimerText.Foreground = Brush("#8F94A8");
         CancelHint.Background = Brush("#141E2230");
         CancelHint.BorderBrush = Brush("#4AFFFFFF");
         CancelKeyText.Foreground = Brush("#C9CCD6");
         ProcessingTrack.Background = Brush("#3F565B6B");
-        AudioMeter.SetPalette(Color.FromRgb(255, 117, 109), Color.FromRgb(68, 72, 84));
+        AudioMeter.SetPalette(Color.FromRgb(255, 117, 109), MeterIdle);
     }
 
     private void OnWindowSizeChanged(object sender, SizeChangedEventArgs e)

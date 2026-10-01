@@ -4,7 +4,9 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using VoiceInput.App;
 using VoiceInput.Core.Activation;
+using VoiceInput.Windows.Audio;
 using VoiceInput.Windows.Settings;
+using VoiceInput.Windows.Transcription;
 
 namespace VoiceInput.UiPreview;
 
@@ -50,7 +52,7 @@ internal static class Program
         written.Add(Capture(withoutKey, output, "settings-no-key"));
         withoutKey.Close();
 
-        var local = new SettingsWindow(new FakeHost(new AppSettings { StartWithWindows = true }, hasKey: true))
+        var local = new SettingsWindow(new FakeHost(new AppSettings { StartWithWindows = true, Language = "ru", MicrophoneId = "b" }, hasKey: true))
         {
             Left = -10_000,
             Top = -10_000,
@@ -69,10 +71,24 @@ internal static class Program
         return 0;
     }
 
+    private static void Pump(Window window, TimeSpan duration)
+    {
+        var frame = new System.Windows.Threading.DispatcherFrame();
+        var timer = new System.Windows.Threading.DispatcherTimer(
+            duration,
+            System.Windows.Threading.DispatcherPriority.Normal,
+            (_, _) => frame.Continue = false,
+            window.Dispatcher);
+        timer.Start();
+        System.Windows.Threading.Dispatcher.PushFrame(frame);
+        timer.Stop();
+    }
+
     private static string Capture(Window window, string directory, string name)
     {
         window.UpdateLayout();
-        window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
+        // Let entrance animations finish before the frame is taken.
+        Pump(window, TimeSpan.FromMilliseconds(450));
         var visual = (Visual)VisualTreeHelper.GetChild(window, 0);
         var margin = window is MainWindow ? 24 : 0;
         var width = (int)Math.Ceiling(window.ActualWidth);
@@ -114,6 +130,15 @@ internal static class Program
         public bool HasApiKey { get; } = hasKey;
 
         public bool LocalEngineAvailable => false;
+
+        public IReadOnlyList<MicrophoneChoice> Microphones { get; } =
+        [
+            new("a", "Микрофон (Realtek High Definition Audio)"),
+            new("b", "Гарнитура (Logi Zone Wired)"),
+        ];
+
+        public Task<OpenAiKeyCheckResult> CheckApiKeyAsync(string? candidate) =>
+            Task.FromResult(new OpenAiKeyCheckResult(OpenAiKeyCheckStatus.Accepted, "Ключ работает."));
 
         public string Version => "1.0.0";
 

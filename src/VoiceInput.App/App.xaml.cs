@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.IO;
+using System.Net.Http;
 using System.Reflection;
 using System.Windows;
 using VoiceInput.Core.Activation;
@@ -37,6 +38,7 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
     private Forms.ToolStripLabel? statusItem;
     private Forms.ToolStripMenuItem? openAiItem;
     private Forms.ToolStripMenuItem? localItem;
+    private Forms.ToolStripMenuItem? microphoneMenu;
     private DictationWorkflow? workflow;
     private IAudioRecorder? recorder;
     private IRecordingLevelSource? recordingLevelSource;
@@ -52,6 +54,24 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
     bool ISettingsHost.LocalEngineAvailable => engineFactory?.IsLocalEngineAvailable == true;
 
     string ISettingsHost.Version => ApplicationVersion;
+
+    IReadOnlyList<MicrophoneChoice> ISettingsHost.Microphones => AudioDeviceCatalog.ListMicrophones();
+
+    async Task<OpenAiKeyCheckResult> ISettingsHost.CheckApiKeyAsync(string? candidate)
+    {
+        string key;
+        try
+        {
+            key = string.IsNullOrWhiteSpace(candidate) ? apiKeyProvider.GetApiKey() : candidate.Trim();
+        }
+        catch (InvalidOperationException exception)
+        {
+            return new OpenAiKeyCheckResult(OpenAiKeyCheckStatus.Rejected, exception.Message);
+        }
+
+        using var http = new HttpClient();
+        return await OpenAiKeyCheck.CheckAsync(http, key, lifetime.Token);
+    }
 
     private static string ApplicationVersion
     {
@@ -333,8 +353,9 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
     private IAudioRecorder CreateRecorder()
     {
         var fixturePath = Environment.GetEnvironmentVariable("VOICE_INPUT_PCM_FIXTURE");
+        // The factory reads the setting at every recording, so a new microphone applies from the next dictation.
         IAudioRecorder created = string.IsNullOrWhiteSpace(fixturePath)
-            ? new WasapiPushToTalkRecorder()
+            ? new WasapiPushToTalkRecorder(() => settings.MicrophoneId)
             : new PcmFixtureAudioRecorder(fixturePath);
         if (created is IRecordingLevelSource levelSource)
         {
@@ -371,6 +392,11 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
         engineMenu.Visible = engineFactory?.IsLocalEngineAvailable == true;
         menu.Items.Add(engineMenu);
 
+        microphoneMenu = new Forms.ToolStripMenuItem("Микрофон");
+        microphoneMenu.DropDownOpening += (_, _) => FillMicrophoneMenu();
+        microphoneMenu.DropDownItems.Add(new Forms.ToolStripMenuItem("Загрузка…") { Enabled = false });
+        menu.Items.Add(microphoneMenu);
+
         var settingsItem = new Forms.ToolStripMenuItem("Настройки…");
         settingsItem.Click += (_, _) => ShowSettings();
         menu.Items.Add(settingsItem);
@@ -395,6 +421,44 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
         };
         icon.DoubleClick += (_, _) => ShowSettings();
         return icon;
+    }
+
+    // Built when the submenu opens, so a microphone plugged in a minute ago is already there.
+    private void FillMicrophoneMenu()
+    {
+        if (microphoneMenu is null)
+        {
+            return;
+        }
+
+        microphoneMenu.DropDownItems.Clear();
+        var current = settings.MicrophoneId;
+        var defaultItem = new Forms.ToolStripMenuItem("По умолчанию в Windows")
+        {
+            Checked = string.IsNullOrWhiteSpace(current),
+        };
+        defaultItem.Click += async (_, _) => await SwitchMicrophoneAsync(null);
+        microphoneMenu.DropDownItems.Add(defaultItem);
+
+        foreach (var microphone in AudioDeviceCatalog.ListMicrophones())
+        {
+            var item = new Forms.ToolStripMenuItem(microphone.Name)
+            {
+                Checked = string.Equals(microphone.Id, current, StringComparison.Ordinal),
+            };
+            var id = microphone.Id;
+            item.Click += async (_, _) => await SwitchMicrophoneAsync(id);
+            microphoneMenu.DropDownItems.Add(item);
+        }
+    }
+
+    private async Task SwitchMicrophoneAsync(string? microphoneId)
+    {
+        var error = await ((ISettingsHost)this).ApplyAsync(settings with { MicrophoneId = microphoneId });
+        if (error is not null)
+        {
+            await ShowTransientErrorAsync(error);
+        }
     }
 
     private void UpdateEngineChecks()

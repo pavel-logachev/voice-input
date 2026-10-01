@@ -25,6 +25,9 @@ public sealed record AppSettings
 
     /// <summary>Optional ISO-639-1 hint for the cloud engine (for example "ru"); empty means automatic.</summary>
     public string? Language { get; init; }
+
+    /// <summary>Windows endpoint id of the chosen microphone; empty means the Windows default.</summary>
+    public string? MicrophoneId { get; init; }
 }
 
 /// <summary>Reads and writes settings as JSON. A missing or damaged file never stops the application.</summary>
@@ -91,6 +94,7 @@ public sealed class SettingsStore(string? path = null)
             Version = AppSettings.CurrentVersion,
             Engine = Enum.IsDefined(settings.Engine) ? settings.Engine : TranscriptionEngine.OpenAi,
             Language = language is { Length: 2 or 3 } ? language : null,
+            MicrophoneId = string.IsNullOrWhiteSpace(settings.MicrophoneId) ? null : settings.MicrophoneId.Trim(),
         };
     }
 }

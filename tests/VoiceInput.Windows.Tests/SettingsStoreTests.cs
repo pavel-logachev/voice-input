@@ -79,6 +79,18 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void MicrophoneChoiceRoundTripsAndBlankMeansDefault()
+    {
+        var store = new SettingsStore(FilePath);
+
+        store.Save(new AppSettings { MicrophoneId = "  {0.0.1.00000000}.{abc}  " });
+        Assert.Equal("{0.0.1.00000000}.{abc}", store.Load().MicrophoneId);
+
+        store.Save(new AppSettings { MicrophoneId = "   " });
+        Assert.Null(store.Load().MicrophoneId);
+    }
+
+    [Fact]
     public void SaveOverwritesThePreviousFile()
     {
         var store = new SettingsStore(FilePath);

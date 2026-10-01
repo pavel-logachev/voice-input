@@ -28,6 +28,12 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
     {
     }
 
+    /// <summary>Records from the microphone the delegate names at the moment each recording starts (null: Windows default).</summary>
+    public WasapiPushToTalkRecorder(Func<string?> microphoneId)
+        : this(() => new WasapiCaptureSession((microphoneId ?? throw new ArgumentNullException(nameof(microphoneId)))()))
+    {
+    }
+
     internal WasapiPushToTalkRecorder(Func<IAudioCaptureSession> captureFactory)
     {
         this.captureFactory = captureFactory ?? throw new ArgumentNullException(nameof(captureFactory));

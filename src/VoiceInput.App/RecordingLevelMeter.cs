@@ -70,6 +70,9 @@ public sealed class RecordingLevelMeter : FrameworkElement
                 continue;
             }
 
+            // Older bars (on the left) fade, so the meter reads as sound travelling away.
+            var age = levels.Length <= 1 ? 1.0 : (double)index / (levels.Length - 1);
+            drawingContext.PushOpacity(0.32 + (0.68 * age));
             var shapedLevel = Math.Sqrt(level);
             var height = 2 + (shapedLevel * Math.Max(0, ActualHeight - 2));
             drawingContext.DrawRoundedRectangle(
@@ -78,6 +81,7 @@ public sealed class RecordingLevelMeter : FrameworkElement
                 new Rect(left, centerY - (height / 2), barWidth, height),
                 1.5,
                 1.5);
+            drawingContext.Pop();
         }
     }
 

@@ -8,7 +8,13 @@ internal sealed class WasapiCaptureSession : IAudioCaptureSession
     private readonly IWaveIn capture;
 
     public WasapiCaptureSession()
-        : this(new WasapiCapture())
+        : this(deviceId: null)
+    {
+    }
+
+    /// <summary>Captures from the given endpoint id, falling back to the Windows default device.</summary>
+    public WasapiCaptureSession(string? deviceId)
+        : this(CreateCapture(deviceId))
     {
     }
 
@@ -34,6 +40,12 @@ internal sealed class WasapiCaptureSession : IAudioCaptureSession
         capture.DataAvailable -= OnDataAvailable;
         capture.RecordingStopped -= OnRecordingStopped;
         capture.Dispose();
+    }
+
+    private static WasapiCapture CreateCapture(string? deviceId)
+    {
+        using var device = AudioDeviceCatalog.OpenCaptureDevice(deviceId, out _);
+        return new WasapiCapture(device);
     }
 
     private void OnDataAvailable(object? sender, WaveInEventArgs e) => DataAvailable?.Invoke(this, e);
