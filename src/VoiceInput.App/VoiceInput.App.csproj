@@ -18,6 +18,11 @@
     <ApplicationIcon>..\..\assets\VoiceInput.ico</ApplicationIcon>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="VoiceInput.Windows.Tests" />
+    <InternalsVisibleTo Include="VoiceInput.UiPreview" />
+  </ItemGroup>
+
   <Target Name="CopyAsrWorker" AfterTargets="Build">
     <ItemGroup>
       <AsrWorkerFiles Include="..\VoiceInput.Asr.Worker\bin\$(Configuration)\net10.0-windows\**\*" />

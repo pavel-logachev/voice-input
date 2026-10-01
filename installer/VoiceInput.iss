@@ -4,12 +4,7 @@
 #ifndef PublishDir
   #error PublishDir must be supplied by the release build.
 #endif
-#ifndef RuntimeArchive
-  #error RuntimeArchive must be supplied by the release build.
-#endif
-#ifndef ModelFile
-  #error ModelFile must be supplied by the release build.
-#endif
+; RuntimeArchive and ModelFile are only supplied for the optional offline build with the local engine.
 
 [Setup]
 AppId={{D87D0CDE-BDE2-4C9E-B5EC-C69F389FE6FD}
@@ -53,8 +48,12 @@ Name: "desktopicon"; Description: "Создать ярлык на рабочем
 
 [Files]
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+#ifdef RuntimeArchive
 Source: "{#RuntimeArchive}"; DestDir: "{localappdata}\VoiceInput\downloads"; DestName: "transcribe-native-0.1.3-windows-x86_64-cpu-vulkan.tar.gz"; Flags: ignoreversion
+#endif
+#ifdef ModelFile
 Source: "{#ModelFile}"; DestDir: "{localappdata}\VoiceInput\models"; DestName: "gigaam-v3-e2e-rnnt-Q4_K_M.gguf"; Flags: ignoreversion
+#endif
 Source: "..\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
@@ -70,6 +69,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Filename: "{app}\VoiceInput.App.exe"; Description: "Запустить Voice Input"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
+; Removes settings and the encrypted API key together with the program.
 Type: filesandordirs; Name: "{localappdata}\VoiceInput"
 
 [Code]

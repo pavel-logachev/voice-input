@@ -6,19 +6,21 @@ public sealed class NeutralStartupUxTests
     public void SuccessfulStartupDoesNotShowBalloonNotifications()
     {
         var source = ReadRepositoryFile("src", "VoiceInput.App", "App.xaml.cs");
-        var initializationErrorHandler = source.IndexOf(
-            "catch (Exception exception)",
-            StringComparison.Ordinal);
 
-        Assert.True(initializationErrorHandler > 0);
-        Assert.DoesNotContain(
-            "ShowBalloonTip",
-            source[..initializationErrorHandler],
-            StringComparison.Ordinal);
-        var balloonCall = source.IndexOf("ShowBalloonTip", StringComparison.Ordinal);
-        Assert.True(balloonCall >= 0);
-        Assert.Equal(balloonCall, source.LastIndexOf("ShowBalloonTip", StringComparison.Ordinal));
-        Assert.Contains("Voice Input — ошибка запуска", source, StringComparison.Ordinal);
+        // Balloons are reserved for problems the user must act on: a failed engine start and a taken hotkey.
+        var balloonCalls = AllIndexesOf(source, "ShowBalloonTip");
+        Assert.Equal(2, balloonCalls.Count);
+
+        var failureHandler = source.IndexOf("initialization-error", StringComparison.Ordinal);
+        var conflictMethod = source.IndexOf("private void ShowHotkeyConflictWarning()", StringComparison.Ordinal);
+        Assert.True(failureHandler > 0);
+        Assert.True(conflictMethod > failureHandler);
+
+        // One call sits in the initialization failure handler, the other in the hotkey conflict method.
+        Assert.Single(balloonCalls, index => index > failureHandler && index < conflictMethod);
+        Assert.Single(balloonCalls, index => index > conflictMethod);
+        Assert.Contains("Voice Input — не удалось запустить распознавание", source, StringComparison.Ordinal);
+        Assert.Contains("Voice Input — горячая клавиша занята", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -52,6 +54,19 @@ public sealed class NeutralStartupUxTests
         Assert.Contains("Удерживать для записи — Ctrl + Shift + Space", source, StringComparison.Ordinal);
         Assert.Contains("Начать или завершить — Ctrl + Shift + K", source, StringComparison.Ordinal);
         Assert.Contains("Отменить диктовку — Esc", source, StringComparison.Ordinal);
+    }
+
+    private static List<int> AllIndexesOf(string text, string value)
+    {
+        var indexes = new List<int>();
+        var index = text.IndexOf(value, StringComparison.Ordinal);
+        while (index >= 0)
+        {
+            indexes.Add(index);
+            index = text.IndexOf(value, index + value.Length, StringComparison.Ordinal);
+        }
+
+        return indexes;
     }
 
     private static string ReadRepositoryFile(params string[] parts) =>

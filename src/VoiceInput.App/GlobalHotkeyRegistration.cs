@@ -1,13 +1,13 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
+using System.Windows.Threading;
+using VoiceInput.Windows.Hotkeys;
 
 namespace VoiceInput.App;
 
 internal sealed class GlobalHotkeyRegistration : IDisposable
 {
-    private const int HoldHotkeyId = 0x5649;
-    private const int ToggleHotkeyId = 0x564A;
     private const int HotkeyMessage = 0x0312;
     private const int LowLevelKeyboardHook = 13;
     private const int KeyDownMessage = 0x0100;
@@ -22,11 +22,14 @@ internal sealed class GlobalHotkeyRegistration : IDisposable
 
     private readonly HwndSource source;
     private readonly LowLevelKeyboardProcedure cancellationHookProcedure;
+    private readonly EscapeCancellationPolicy cancellationPolicy;
+    private readonly HotkeyAvailability availability;
     private nint cancellationHook;
     private bool disposed;
 
-    public GlobalHotkeyRegistration()
+    public GlobalHotkeyRegistration(Func<bool> canCancel)
     {
+        cancellationPolicy = new EscapeCancellationPolicy(canCancel);
         cancellationHookProcedure = CancellationHookProcedure;
         var parameters = new HwndSourceParameters("VoiceInput.GlobalHotkey")
         {
@@ -39,30 +42,17 @@ internal sealed class GlobalHotkeyRegistration : IDisposable
         source = new HwndSource(parameters);
         source.AddHook(WindowProcedure);
 
-        if (!NativeMethods.RegisterHotKey(
-                source.Handle,
-                HoldHotkeyId,
-                ModifierControl | ModifierShift | ModifierNoRepeat,
-                VirtualKeySpace))
-        {
-            var error = Marshal.GetLastWin32Error();
-            source.RemoveHook(WindowProcedure);
-            source.Dispose();
-            throw new Win32Exception(error, "Could not register Ctrl+Shift+Space as a global hotkey.");
-        }
-
-        if (!NativeMethods.RegisterHotKey(
-                source.Handle,
-                ToggleHotkeyId,
-                ModifierControl | ModifierShift | ModifierNoRepeat,
-                VirtualKeyK))
-        {
-            var error = Marshal.GetLastWin32Error();
-            NativeMethods.UnregisterHotKey(source.Handle, HoldHotkeyId);
-            source.RemoveHook(WindowProcedure);
-            source.Dispose();
-            throw new Win32Exception(error, "Could not register Ctrl+Shift+K as a global hotkey.");
-        }
+        // A hotkey taken by another program is reported, not fatal: the other one and the tray keep working.
+        availability = HotkeyAvailability.RegisterAll(
+            id => id switch
+            {
+                HotkeyAvailability.HoldHotkeyId => NativeMethods.RegisterHotKey(
+                    source.Handle, id, ModifierControl | ModifierShift | ModifierNoRepeat, VirtualKeySpace),
+                HotkeyAvailability.ToggleHotkeyId => NativeMethods.RegisterHotKey(
+                    source.Handle, id, ModifierControl | ModifierShift | ModifierNoRepeat, VirtualKeyK),
+                _ => throw new ArgumentOutOfRangeException(nameof(id)),
+            },
+            Marshal.GetLastWin32Error);
     }
 
     public event EventHandler? Activated;
@@ -71,9 +61,20 @@ internal sealed class GlobalHotkeyRegistration : IDisposable
 
     public event EventHandler? CancellationRequested;
 
+    public bool HoldHotkeyAvailable => availability.HoldHotkeyAvailable;
+
+    public bool ToggleHotkeyAvailable => availability.ToggleHotkeyAvailable;
+
+    public int HoldHotkeyError => availability.HoldHotkeyError;
+
+    public int ToggleHotkeyError => availability.ToggleHotkeyError;
+
+    public string? GetConflictMessage() => availability.CreateConflictMessage();
+
     public void EnableCancellation()
     {
         ObjectDisposedException.ThrowIf(disposed, this);
+        cancellationPolicy.BeginSession();
         if (cancellationHook != nint.Zero)
         {
             return;
@@ -92,6 +93,7 @@ internal sealed class GlobalHotkeyRegistration : IDisposable
 
     public void DisableCancellation()
     {
+        cancellationPolicy.EndSession();
         if (cancellationHook == nint.Zero)
         {
             return;
@@ -110,8 +112,16 @@ internal sealed class GlobalHotkeyRegistration : IDisposable
 
         disposed = true;
         DisableCancellation();
-        NativeMethods.UnregisterHotKey(source.Handle, ToggleHotkeyId);
-        NativeMethods.UnregisterHotKey(source.Handle, HoldHotkeyId);
+        if (availability.ToggleHotkeyAvailable)
+        {
+            NativeMethods.UnregisterHotKey(source.Handle, HotkeyAvailability.ToggleHotkeyId);
+        }
+
+        if (availability.HoldHotkeyAvailable)
+        {
+            NativeMethods.UnregisterHotKey(source.Handle, HotkeyAvailability.HoldHotkeyId);
+        }
+
         source.RemoveHook(WindowProcedure);
         source.Dispose();
     }
@@ -123,30 +133,72 @@ internal sealed class GlobalHotkeyRegistration : IDisposable
         nint longParameter,
         ref bool handled)
     {
-        if (message == HotkeyMessage && wordParameter == HoldHotkeyId)
+        if (message == HotkeyMessage && wordParameter == HotkeyAvailability.HoldHotkeyId)
         {
             handled = true;
             Activated?.Invoke(this, EventArgs.Empty);
         }
-        else if (message == HotkeyMessage && wordParameter == ToggleHotkeyId)
+        else if (message == HotkeyMessage && wordParameter == HotkeyAvailability.ToggleHotkeyId)
         {
             handled = true;
             ToggleActivated?.Invoke(this, EventArgs.Empty);
         }
+
         return nint.Zero;
     }
 
+    // Runs inside the low-level keyboard hook: answer at once, cancel later on the UI thread.
     private nint CancellationHookProcedure(int code, nint wordParameter, nint longParameter)
     {
         if (code >= 0 &&
             (wordParameter == KeyDownMessage || wordParameter == SystemKeyDownMessage) &&
             Marshal.ReadInt32(longParameter) == VirtualKeyEscape)
         {
-            CancellationRequested?.Invoke(this, EventArgs.Empty);
-            return 1;
+            var decision = cancellationPolicy.Decide();
+            if (decision.Kind != EscapeDecisionKind.PassThrough)
+            {
+                if (decision.Kind == EscapeDecisionKind.QueueCancellation)
+                {
+                    QueueCancellation(decision.Generation);
+                }
+
+                return 1;
+            }
         }
 
         return NativeMethods.CallNextHookEx(cancellationHook, code, wordParameter, longParameter);
+    }
+
+    private void QueueCancellation(long generation)
+    {
+        var dispatcher = source.Dispatcher;
+        if (dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished)
+        {
+            return;
+        }
+
+        try
+        {
+            dispatcher
+                .BeginInvoke(
+                    DispatcherPriority.Send,
+                    () =>
+                    {
+                        if (cancellationPolicy.TryConsumeQueuedCancellation(generation))
+                        {
+                            CancellationRequested?.Invoke(this, EventArgs.Empty);
+                        }
+                    })
+                .Task.ContinueWith(
+                    static completed => completed.Exception,
+                    CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+        }
+        catch (InvalidOperationException)
+        {
+            // The dispatcher shut down between the check and the call.
+        }
     }
 
     private delegate nint LowLevelKeyboardProcedure(int code, nint wordParameter, nint longParameter);

@@ -42,4 +42,7 @@ public sealed class PcmFixtureAudioRecorder(string fixturePath) : IAudioRecorder
         active = false;
         return ValueTask.CompletedTask;
     }
+
+    public Task WaitForRecordingEndAsync(CancellationToken cancellationToken) =>
+        Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
 }

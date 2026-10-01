@@ -40,3 +40,6 @@ logs/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Local recovery workspace (decompiled 0.9.3 build and analysis); never committed
+_recovered/
