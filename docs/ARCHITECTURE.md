@@ -63,7 +63,7 @@
 - **C# + .NET 10**;
 - **WPF** только для tray/settings/overlay;
 - прямые Windows API для `RegisterHotKey`, foreground/focus, native text controls и paste; UI Automation остаётся следующим insertion-срезом;
-- **WASAPI через NAudio 2.2.1** для захвата микрофона;
+- **WASAPI через NAudio 3.1.0** для захвата микрофона;
 - **GigaAM-v3 E2E RNNT** в GGUF через `transcribe.cpp` как основной local-ASR кандидат;
 - отдельный долгоживущий native worker, связанный с приложением через named pipe;
 - встроенный DI/host, structured logging и state machine;

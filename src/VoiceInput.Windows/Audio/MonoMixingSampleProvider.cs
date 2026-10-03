@@ -19,17 +19,13 @@ public sealed class MonoMixingSampleProvider : ISampleProvider
 
     public WaveFormat WaveFormat { get; }
 
-    public int Read(float[] buffer, int offset, int count)
+    public int Read(Span<float> buffer)
     {
-        ArgumentNullException.ThrowIfNull(buffer);
-        ArgumentOutOfRangeException.ThrowIfNegative(offset);
-        ArgumentOutOfRangeException.ThrowIfNegative(count);
-
-        var requestedSourceSamples = checked(count * sourceChannels);
+        var requestedSourceSamples = checked(buffer.Length * sourceChannels);
         var sourceBuffer = ArrayPool<float>.Shared.Rent(requestedSourceSamples);
         try
         {
-            var sourceSamplesRead = source.Read(sourceBuffer, 0, requestedSourceSamples);
+            var sourceSamplesRead = source.Read(sourceBuffer.AsSpan(0, requestedSourceSamples));
             var framesRead = sourceSamplesRead / sourceChannels;
 
             for (var frame = 0; frame < framesRead; frame++)
@@ -41,7 +37,7 @@ public sealed class MonoMixingSampleProvider : ISampleProvider
                     sum += sourceBuffer[sourceOffset + channel];
                 }
 
-                buffer[offset + frame] = sum / sourceChannels;
+                buffer[frame] = sum / sourceChannels;
             }
 
             return framesRead;
