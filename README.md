@@ -104,7 +104,8 @@ dotnet run --project tests/VoiceInput.UiPreview -c Release -- preview
 
 - [Что нового](CHANGELOG.md)
 - [Архитектура](docs/ARCHITECTURE.md)
-- [Принципы знака Quiet Pulse](docs/ICON_DESIGN.md)
+- [Принципы знака «Тихий пульс»](docs/ICON_DESIGN.md)
+- [Как участвовать](CONTRIBUTING.md) и [политика безопасности](SECURITY.md)
 - [Исследование локальных ASR-моделей](docs/MODEL_RESEARCH.md) (история: 0.x-версии работали офлайн)
 
 ## Лицензия

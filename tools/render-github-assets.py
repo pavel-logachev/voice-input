@@ -78,7 +78,7 @@ WAVE_COLOURS = ["#A99BFF", "#D698D8", "#FF8FB1", "#FFC56D"]
 
 
 def waveform(draw: ImageDraw.ImageDraw, origin: tuple[int, int], heights: list[int], width: int = 18, gap: int = 15) -> None:
-    """The icon's waveform: a violet-to-amber sweep that resolves into a steady white cursor."""
+    """Волна со значка: от фиолетового к янтарному, в конце ровный белый курсор."""
     x0, cy = origin
     x = x0
     for index, h in enumerate(heights):
@@ -103,13 +103,13 @@ def render_banner() -> None:
     draw = ImageDraw.Draw(im)
     tracking(draw, (84, 42), "VOICE INPUT / WINDOWS", font(18), MUTED, 2)
     draw.text((80, 102), "Voice Input", font=font(68), fill=WHITE)
-    draw.text((84, 190), "DICTATION IN ANY TEXT FIELD.", font=font(24), fill=SIGNAL)
-    draw.text((84, 242), "Hold a hotkey, speak, and keep typing.", font=font(22), fill=MUTED)
+    draw.text((84, 190), "ДИКТОВКА В ЛЮБОЕ ТЕКСТОВОЕ ПОЛЕ.", font=font(24), fill=SIGNAL)
+    draw.text((84, 242), "Удерживайте горячую клавишу, говорите и продолжайте печатать.", font=font(22), fill=MUTED)
     waveform(draw, (90, 348), [30, 66, 108, 70])
     draw.line((1036, 62, 1036, 378), fill=GRID, width=1)
     icon_box = (1162, 70, 1432, 340)
     paste_icon(im, icon_box)
-    caption = "RECORD / TRANSCRIBE / INSERT"
+    caption = "ЗАПИСЬ / РАСПОЗНАВАНИЕ / ВСТАВКА"
     caption_face = font(15)
     caption_x = (icon_box[0] + icon_box[2] - tracking_width(draw, caption, caption_face, 2)) // 2
     tracking(draw, (caption_x, 374), caption, caption_face, MUTED, 2)
@@ -124,17 +124,17 @@ def render_social() -> None:
     tracking(draw, (84, 60), "OPENAI / WINDOWS", font(18), MUTED, 2)
     draw.text((80, 146), "Voice", font=font(82), fill=WHITE)
     draw.text((80, 230), "Input", font=font(82), fill=WHITE)
-    draw.text((84, 348), "Russian speech to the field", font=font(27), fill=SIGNAL)
-    draw.text((84, 386), "where recording started.", font=font(27), fill=SIGNAL)
+    draw.text((84, 348), "Русская речь попадает в поле,", font=font(27), fill=SIGNAL)
+    draw.text((84, 386), "где началась запись.", font=font(27), fill=SIGNAL)
     waveform(draw, (88, 520), [28, 62, 104, 72])
     paste_icon(im, (790, 94, 1160, 464))
-    tracking(draw, (790, 492), "TRAY APP / OWN API KEY / ESC TO CANCEL", font(16), MUTED, 1)
+    tracking(draw, (790, 492), "В ТРЕЕ / СВОЙ API-КЛЮЧ / ESC ОТМЕНЯЕТ", font(16), MUTED, 1)
     im = Image.alpha_composite(im, noise(size)).convert("RGB")
     im.save(OUT / "voice-input-social-preview.png", optimize=True, quality=94)
 
 
 def render_product_demo() -> None:
-    """The real 1.0 interface: overlay states on the left, the settings window on the right."""
+    """Настоящий интерфейс 1.0: слева состояния оверлея, справа окно настроек."""
     size = (1440, 800)
     im = Image.new("RGB", size, PAPER)
     draw = ImageDraw.Draw(im)
@@ -142,16 +142,16 @@ def render_product_demo() -> None:
     draw.rectangle((0, 0, size[0], 172), fill=INK)
     draw.rectangle((0, 0, 12, size[1]), fill=INDIGO)
     draw.rectangle((12, 0, 16, size[1]), fill=SIGNAL)
-    tracking(draw, (74, 38), "VOICE INPUT 1.0 / WINDOWS 10 AND 11", font(17), MUTED, 2)
-    draw.text((70, 76), "One quiet overlay. One small settings window.", font=font(46), fill=WHITE)
+    tracking(draw, (74, 38), "VOICE INPUT 1.0 / WINDOWS 10 И 11", font(17), MUTED, 2)
+    draw.text((70, 76), "Тихий оверлей и одно небольшое окно настроек.", font=font(46), fill=WHITE)
 
     product = OUT / "product"
     overlay_w, overlay_h = 400, 144
     cells = [
-        (70, 214, "01 / LISTENING", "listening.png"),
-        (500, 214, "02 / RECOGNISING", "processing.png"),
-        (70, 414, "03 / DONE", "success.png"),
-        (500, 414, "04 / PROBLEM, IN PLAIN WORDS", "error.png"),
+        (70, 214, "01 / СЛУШАЮ", "listening.png"),
+        (500, 214, "02 / РАСПОЗНАЮ", "processing.png"),
+        (70, 414, "03 / ГОТОВО", "success.png"),
+        (500, 414, "04 / ОШИБКА ПРОСТЫМИ СЛОВАМИ", "error.png"),
     ]
     for x, y, label, filename in cells:
         tracking(draw, (x, y), label, font(15), PAPER_MUTED, 2)
@@ -164,7 +164,7 @@ def render_product_demo() -> None:
     settings_h = round(settings.height * settings_w / settings.width)
     settings = settings.resize((settings_w, settings_h), Image.Resampling.LANCZOS)
     sx, sy = 1050, 214
-    tracking(draw, (sx, sy), "05 / SETTINGS", font(15), PAPER_MUTED, 2)
+    tracking(draw, (sx, sy), "05 / НАСТРОЙКИ", font(15), PAPER_MUTED, 2)
     shadow = Image.new("RGBA", size, (0, 0, 0, 0))
     ImageDraw.Draw(shadow).rounded_rectangle((sx - 8, sy + 34, sx + settings_w + 8, sy + 38 + settings_h), radius=18, fill=(18, 28, 63, 40))
     im = Image.alpha_composite(im.convert("RGBA"), shadow.filter(ImageFilter.GaussianBlur(14))).convert("RGB")
@@ -172,8 +172,10 @@ def render_product_demo() -> None:
     im.paste(settings, (sx, sy + 31))
 
     draw.line((70, 742, 1370, 742), fill=PAPER_LINE, width=2)
-    tracking(draw, (70, 760), "RECORD / TRANSCRIBE / INSERT", font(16), PAPER_INK, 2)
-    tracking(draw, (1010, 760), "RENDERED FROM THE REAL WINDOWS", font(16), PAPER_MUTED, 2)
+    tracking(draw, (70, 760), "ЗАПИСЬ / РАСПОЗНАВАНИЕ / ВСТАВКА", font(16), PAPER_INK, 2)
+    footnote = "СНЯТО С НАСТОЯЩИХ ОКОН"
+    footnote_x = 1370 - tracking_width(draw, footnote, font(16), 2)
+    tracking(draw, (footnote_x, 760), footnote, font(16), PAPER_MUTED, 2)
     im.save(OUT / "voice-input-product.png", optimize=True, quality=94)
 
 
@@ -181,4 +183,4 @@ if __name__ == "__main__":
     render_banner()
     render_social()
     render_product_demo()
-    print("Rendered Voice Input GitHub assets")
+    print("Изображения Voice Input для GitHub отрисованы")

@@ -1,0 +1,47 @@
+name: Ошибка
+description: Диктовка не сработала, текст не вставился или окно ведёт себя неправильно
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Не прикладывайте API-ключ OpenAI и текст личных диктовок.
+  - type: input
+    id: version
+    attributes:
+      label: Версия Voice Input
+      description: Видна в правом верхнем углу окна настроек
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Версия Windows
+      placeholder: Windows 11 24H2
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Что вы сделали
+      description: Шаги по порядку - какое приложение было открыто, какие клавиши нажали
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Что произошло
+      description: Что показал оверлей и что появилось в поле ввода
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Что ожидали
+  - type: checkboxes
+    id: admin
+    attributes:
+      label: Условия
+      options:
+        - label: Целевое приложение запущено от администратора
+        - label: Проблема повторяется после перезапуска Voice Input
