@@ -204,7 +204,7 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
                 if (levelWaveBuffer is not null && levelSampleProvider is not null && levelSamples is not null)
                 {
                     levelWaveBuffer.AddSamples(eventArgs.Buffer, 0, bytesToWrite);
-                    var sampleCount = levelSampleProvider.Read(levelSamples, 0, levelSamples.Length);
+                    var sampleCount = levelSampleProvider.Read(levelSamples);
                     if (sampleCount > 0)
                     {
                         level = AudioLevelNormalizer.FromSamples(levelSamples.AsSpan(0, sampleCount));
@@ -319,9 +319,8 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
     {
         try
         {
-            levelWaveBuffer = new BufferedWaveProvider(format)
+            levelWaveBuffer = new BufferedWaveProvider(format, TimeSpan.FromSeconds(1))
             {
-                BufferDuration = TimeSpan.FromSeconds(1),
                 DiscardOnBufferOverflow = true,
                 ReadFully = false,
             };
@@ -372,7 +371,7 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
         var result = new List<float>();
         var buffer = new float[OutputSampleRate];
         int read;
-        while ((read = provider.Read(buffer, 0, buffer.Length)) > 0)
+        while ((read = provider.Read(buffer)) > 0)
         {
             result.AddRange(buffer.AsSpan(0, read).ToArray());
         }

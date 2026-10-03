@@ -5,7 +5,7 @@
 | Компонент | Назначение | Лицензия | Источник |
 |---|---|---|---|
 | среда выполнения .NET 10 (самодостаточная) | Среда выполнения приложения, WPF, Windows Forms | MIT | https://github.com/dotnet/runtime |
-| NAudio 2.2.1 | Захват звука Windows WASAPI и передискретизация в памяти | MIT | https://github.com/naudio/NAudio |
+| NAudio 3.1.0 | Захват звука Windows WASAPI и передискретизация в памяти | MIT | https://github.com/naudio/NAudio |
 
 ## Внешний сервис
 
