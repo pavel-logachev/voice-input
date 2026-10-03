@@ -7,6 +7,10 @@ updates:
     groups:
       nuget:
         patterns: ["*"]
+    # NAudio 3 меняет API записи звука: переход делается отдельно, с проверкой на микрофоне.
+    ignore:
+      - dependency-name: NAudio
+        update-types: ["version-update:semver-major"]
     open-pull-requests-limit: 3
 
   - package-ecosystem: github-actions
