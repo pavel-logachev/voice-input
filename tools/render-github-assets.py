@@ -1,3 +1,4 @@
+"""Render docs/assets/voice-input-product.png from real UI preview captures."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -97,42 +98,6 @@ def base(size: tuple[int, int], margin: int) -> Image.Image:
     return im
 
 
-def render_banner() -> None:
-    size = (1600, 440)
-    im = base(size, 48)
-    draw = ImageDraw.Draw(im)
-    tracking(draw, (84, 42), "VOICE INPUT / WINDOWS", font(18), MUTED, 2)
-    draw.text((80, 102), "Voice Input", font=font(68), fill=WHITE)
-    draw.text((84, 190), "ДИКТОВКА В ЛЮБОЕ ТЕКСТОВОЕ ПОЛЕ.", font=font(24), fill=SIGNAL)
-    draw.text((84, 242), "Удерживайте горячую клавишу, говорите и продолжайте печатать.", font=font(22), fill=MUTED)
-    waveform(draw, (90, 348), [30, 66, 108, 70])
-    draw.line((1036, 62, 1036, 378), fill=GRID, width=1)
-    icon_box = (1162, 70, 1432, 340)
-    paste_icon(im, icon_box)
-    caption = "ЗАПИСЬ / РАСПОЗНАВАНИЕ / ВСТАВКА"
-    caption_face = font(15)
-    caption_x = (icon_box[0] + icon_box[2] - tracking_width(draw, caption, caption_face, 2)) // 2
-    tracking(draw, (caption_x, 374), caption, caption_face, MUTED, 2)
-    im = Image.alpha_composite(im, noise(size)).convert("RGB")
-    im.save(OUT / "voice-input-banner.png", optimize=True, quality=94)
-
-
-def render_social() -> None:
-    size = (1280, 640)
-    im = base(size, 54)
-    draw = ImageDraw.Draw(im)
-    tracking(draw, (84, 60), "OPENAI / WINDOWS", font(18), MUTED, 2)
-    draw.text((80, 146), "Voice", font=font(82), fill=WHITE)
-    draw.text((80, 230), "Input", font=font(82), fill=WHITE)
-    draw.text((84, 348), "Русская речь попадает в поле,", font=font(27), fill=SIGNAL)
-    draw.text((84, 386), "где началась запись.", font=font(27), fill=SIGNAL)
-    waveform(draw, (88, 520), [28, 62, 104, 72])
-    paste_icon(im, (790, 94, 1160, 464))
-    tracking(draw, (790, 492), "В ТРЕЕ / СВОЙ API-КЛЮЧ / ESC ОТМЕНЯЕТ", font(16), MUTED, 1)
-    im = Image.alpha_composite(im, noise(size)).convert("RGB")
-    im.save(OUT / "voice-input-social-preview.png", optimize=True, quality=94)
-
-
 def render_product_demo() -> None:
     """Настоящий интерфейс 1.0: слева состояния оверлея, справа окно настроек."""
     size = (1440, 800)
@@ -180,7 +145,5 @@ def render_product_demo() -> None:
 
 
 if __name__ == "__main__":
-    render_banner()
-    render_social()
     render_product_demo()
     print("Изображения Voice Input для GitHub отрисованы")
