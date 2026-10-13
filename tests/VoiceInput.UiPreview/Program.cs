@@ -91,8 +91,10 @@ internal static class Program
         Pump(window, TimeSpan.FromMilliseconds(450));
         var visual = (Visual)VisualTreeHelper.GetChild(window, 0);
         var margin = window is MainWindow ? 24 : 0;
-        var width = (int)Math.Ceiling(window.ActualWidth);
-        var height = (int)Math.Ceiling(window.ActualHeight);
+        // Measure the rendered content, not the window: a framed window's size also counts its title bar and borders.
+        var content = visual as FrameworkElement;
+        var width = (int)Math.Ceiling(content?.ActualWidth ?? window.ActualWidth);
+        var height = (int)Math.Ceiling(content?.ActualHeight ?? window.ActualHeight);
         const double dpi = 192;
         var scale = dpi / 96;
 
@@ -111,7 +113,17 @@ internal static class Program
                 new SolidColorBrush(window is MainWindow ? Color.FromRgb(31, 33, 44) : Color.FromRgb(14, 16, 22)),
                 null,
                 new Rect(0, 0, width + (2 * margin), height + (2 * margin)));
-            context.DrawRectangle(new VisualBrush(visual), null, new Rect(margin, margin, width, height));
+            // Map the window rectangle 1:1. A default VisualBrush stretches the visual's content bounds —
+            // which include the drop shadow — to fill the target, and that squeezes the overlay out of proportion.
+            var brush = new VisualBrush(visual)
+            {
+                Stretch = Stretch.None,
+                AlignmentX = AlignmentX.Left,
+                AlignmentY = AlignmentY.Top,
+                ViewboxUnits = BrushMappingMode.Absolute,
+                Viewbox = new Rect(0, 0, width, height),
+            };
+            context.DrawRectangle(brush, null, new Rect(margin, margin, width, height));
         }
 
         bitmap.Render(canvas);
