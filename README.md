@@ -2,11 +2,13 @@
 
 # Voice Input
 
+[![Последний релиз](https://img.shields.io/github/v/release/pavel-logachev/voice-input?style=flat-square&labelColor=0b0f14&label=%D1%80%D0%B5%D0%BB%D0%B8%D0%B7&color=c3f451)](https://github.com/pavel-logachev/voice-input/releases/latest) [![Проверки в CI](https://img.shields.io/github/actions/workflow/status/pavel-logachev/voice-input/ci.yml?branch=main&style=flat-square&labelColor=0b0f14&label=CI)](https://github.com/pavel-logachev/voice-input/actions/workflows/ci.yml) [![Лицензия](https://img.shields.io/github/license/pavel-logachev/voice-input?style=flat-square&labelColor=0b0f14&label=%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F&color=7f99ad)](<LICENSE>)
+
 **Диктуйте в поля ввода Windows: зажмите `Ctrl + Shift + Space`, скажите фразу и отпустите клавиши — текст появится у курсора.**
 
 [Скачать](https://github.com/pavel-logachev/voice-input/releases/latest) · [Как пользоваться](<#как-пользоваться>) · [Приватность](<#приватность>) · [Архитектура](<docs/ARCHITECTURE.md>)
 
-Версия 1.0.0 · Windows 10 1809+ / 11 x64 · [MIT](<LICENSE>)
+Windows 10 1809+ / 11 x64
 
 Voice Input работает в системном трее. Речь распознаёт OpenAI по вашему API-ключу: нужен интернет, запросы оплачиваются с вашего аккаунта OpenAI.
 
