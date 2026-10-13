@@ -18,7 +18,7 @@ dotnet build VoiceInput.sln -c Release
 dotnet test VoiceInput.sln -c Release --no-build
 ```
 
-Настоящие окна можно отрисовать в PNG без записи речи:
+Настоящие окна и меню трея можно отрисовать в PNG без записи речи:
 
 ```bash
 dotnet run --project tests/VoiceInput.UiPreview -c Release -- preview

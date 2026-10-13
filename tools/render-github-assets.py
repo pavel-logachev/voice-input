@@ -98,8 +98,27 @@ def base(size: tuple[int, int], margin: int) -> Image.Image:
     return im
 
 
+BACKDROP = (31, 33, 44)
+
+
+def overlay_tile(path: Path, size: tuple[int, int]) -> Image.Image:
+    """Снимок оверлея на плитке одного размера: окно оверлея прозрачное, высота зависит от состояния."""
+    shot = Image.open(path).convert("RGB")
+    tile = Image.new("RGB", (size[0] * 2, size[1] * 2), BACKDROP)
+    tile.paste(shot, ((tile.width - shot.width) // 2, (tile.height - shot.height) // 2))
+    return tile.resize(size, Image.Resampling.LANCZOS)
+
+
+def rounded(image: Image.Image, radius: int) -> Image.Image:
+    mask = Image.new("L", image.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, image.width - 1, image.height - 1), radius=radius, fill=255)
+    result = image.convert("RGBA")
+    result.putalpha(mask)
+    return result
+
+
 def render_product_demo() -> None:
-    """Настоящий интерфейс 1.0: слева состояния оверлея, справа окно настроек."""
+    """Настоящий интерфейс 1.1: слева шесть состояний оверлея, справа окно настроек."""
     size = (1440, 800)
     im = Image.new("RGB", size, PAPER)
     draw = ImageDraw.Draw(im)
@@ -107,41 +126,47 @@ def render_product_demo() -> None:
     draw.rectangle((0, 0, size[0], 172), fill=INK)
     draw.rectangle((0, 0, 12, size[1]), fill=INDIGO)
     draw.rectangle((12, 0, 16, size[1]), fill=SIGNAL)
-    tracking(draw, (74, 38), "VOICE INPUT 1.0 / WINDOWS 10 И 11", font(17), MUTED, 2)
+    tracking(draw, (74, 38), "VOICE INPUT 1.1 / WINDOWS 10 И 11", font(17), MUTED, 2)
     draw.text((70, 76), "Тихий оверлей и одно небольшое окно настроек.", font=font(46), fill=WHITE)
 
     product = OUT / "product"
-    overlay_w, overlay_h = 400, 144
+    # Снимки сделаны в 200 %: плитка ровно вдвое меньше, без повторной интерполяции текста.
+    tile_w, tile_h = 416, 125
+    columns = (70, 510)
+    rows = (214, 387, 560)
     cells = [
-        (70, 214, "01 / СЛУШАЮ", "listening.png"),
-        (500, 214, "02 / РАСПОЗНАЮ", "processing.png"),
-        (70, 414, "03 / ГОТОВО", "success.png"),
-        (500, 414, "04 / ОШИБКА ПРОСТЫМИ СЛОВАМИ", "error.png"),
+        ("01 / СЛУШАЮ", "listening.png"),
+        ("02 / РАСПОЗНАЮ", "processing.png"),
+        ("03 / ВСТАВЛЯЮ ТЕКСТ", "inserting.png"),
+        ("04 / ГОТОВО", "success.png"),
+        ("05 / НЕ УСЛЫШАЛ", "nospeech.png"),
+        ("06 / ОШИБКА ПРОСТЫМИ СЛОВАМИ", "error.png"),
     ]
-    for x, y, label, filename in cells:
+    im = im.convert("RGBA")
+    draw = ImageDraw.Draw(im)
+    for index, (label, filename) in enumerate(cells):
+        x, y = columns[index % 2], rows[index // 2]
         tracking(draw, (x, y), label, font(15), PAPER_MUTED, 2)
-        shot = Image.open(product / filename).convert("RGB").resize((overlay_w, overlay_h), Image.Resampling.LANCZOS)
-        draw.rounded_rectangle((x - 1, y + 30, x + overlay_w, y + 30 + overlay_h), radius=14, outline=PAPER_LINE, width=1)
-        im.paste(shot, (x, y + 31))
+        im.alpha_composite(rounded(overlay_tile(product / filename, (tile_w, tile_h)), 12), (x, y + 30))
 
     settings = Image.open(product / "settings.png").convert("RGB")
-    settings_w = 286
-    settings_h = round(settings.height * settings_w / settings.width)
+    settings_h = 471
+    settings_w = round(settings.width * settings_h / settings.height)
     settings = settings.resize((settings_w, settings_h), Image.Resampling.LANCZOS)
-    sx, sy = 1050, 214
-    tracking(draw, (sx, sy), "05 / НАСТРОЙКИ", font(15), PAPER_MUTED, 2)
+    sx, sy = 1370 - settings_w, 214
+    tracking(draw, (sx, sy), "07 / НАСТРОЙКИ", font(15), PAPER_MUTED, 2)
     shadow = Image.new("RGBA", size, (0, 0, 0, 0))
-    ImageDraw.Draw(shadow).rounded_rectangle((sx - 8, sy + 34, sx + settings_w + 8, sy + 38 + settings_h), radius=18, fill=(18, 28, 63, 40))
-    im = Image.alpha_composite(im.convert("RGBA"), shadow.filter(ImageFilter.GaussianBlur(14))).convert("RGB")
+    ImageDraw.Draw(shadow).rounded_rectangle((sx - 6, sy + 36, sx + settings_w + 6, sy + 40 + settings_h), radius=18, fill=(18, 28, 63, 46))
+    im = Image.alpha_composite(im, shadow.filter(ImageFilter.GaussianBlur(14)))
+    im.alpha_composite(rounded(settings, 10), (sx, sy + 30))
     draw = ImageDraw.Draw(im)
-    im.paste(settings, (sx, sy + 31))
 
     draw.line((70, 742, 1370, 742), fill=PAPER_LINE, width=2)
     tracking(draw, (70, 760), "ЗАПИСЬ / РАСПОЗНАВАНИЕ / ВСТАВКА", font(16), PAPER_INK, 2)
     footnote = "СНЯТО С НАСТОЯЩИХ ОКОН"
     footnote_x = 1370 - tracking_width(draw, footnote, font(16), 2)
     tracking(draw, (footnote_x, 760), footnote, font(16), PAPER_MUTED, 2)
-    im.save(OUT / "voice-input-product.png", optimize=True, quality=94)
+    im.convert("RGB").save(OUT / "voice-input-product.png", optimize=True, quality=94)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import struct
 import subprocess
@@ -98,17 +99,31 @@ def publish(project: Path, output: Path, dotnet: Path, root: Path) -> None:
     )
 
 
+def project_version(root: Path) -> str:
+    """The version the application is built with: one source for the executable and the installer name."""
+    properties = (root / "Directory.Build.props").read_text(encoding="utf-8")
+    match = re.search(r"<Version>([^<]+)</Version>", properties)
+    if match is None:
+        raise RuntimeError("Directory.Build.props has no <Version>.")
+    return match.group(1).strip()
+
+
 def main() -> int:
+    root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description="Build the self-contained Voice Input Windows installer.")
-    parser.add_argument("--version", default="1.0.0")
+    parser.add_argument("--version", default=project_version(root))
     parser.add_argument(
         "--with-local",
         action="store_true",
         help="Also bundle the optional local (GigaAM) engine: worker, runtime archive and model (about 300 MB).",
     )
     args = parser.parse_args()
+    if args.version != project_version(root):
+        raise RuntimeError(
+            f"--version {args.version} does not match Directory.Build.props ({project_version(root)}): "
+            "the settings window would show a different version than the installer."
+        )
 
-    root = Path(__file__).resolve().parents[1]
     dotnet = Path(os.environ.get("DOTNET_EXE", r"C:\Program Files\dotnet\dotnet.exe"))
     if not dotnet.is_file():
         raise FileNotFoundError(dotnet)
