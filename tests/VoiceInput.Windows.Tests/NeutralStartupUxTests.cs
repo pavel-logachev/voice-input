@@ -58,6 +58,23 @@ public sealed class NeutralStartupUxTests
         Assert.Contains("(\"Отменить диктовку\") { ShortcutKeyDisplayString = \"Esc\"", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void InstallerKeepsAutostartOnUpdate()
+    {
+        var installer = ReadRepositoryFile("installer", "VoiceInput.iss");
+
+        // Autostart is also switched in the settings window, under the same registry value.
+        Assert.Contains($"RunValue = '{VoiceInput.Windows.Settings.AutostartRegistration.EntryName}';", installer, StringComparison.Ordinal);
+
+        // "checkedonce" unticks the box on every update, and the script used to delete the entry for an unticked box.
+        Assert.DoesNotContain("checkedonce", installer, StringComparison.Ordinal);
+
+        // The box starts from the current state; a silent update, which shows no box, keeps that state.
+        Assert.Contains("AutostartWasOn := RegValueExists(HKCU, RunKey, RunValue);", installer, StringComparison.Ordinal);
+        Assert.Contains("WizardSelectTasks('!autostart')", installer, StringComparison.Ordinal);
+        Assert.Contains("if Updating and WizardSilent then\n    Keep := AutostartWasOn", installer.ReplaceLineEndings("\n"), StringComparison.Ordinal);
+    }
+
     private static List<int> AllIndexesOf(string text, string value)
     {
         var indexes = new List<int>();
