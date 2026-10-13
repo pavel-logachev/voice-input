@@ -143,7 +143,7 @@ public sealed class WasapiPushToTalkRecorderTests
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
             () => recorder.StartAsync(CancellationToken.None).AsTask());
 
-        Assert.Contains("ещё завершает предыдущую запись", error.Message, StringComparison.Ordinal);
+        Assert.Contains("еще завершает предыдущую запись", error.Message, StringComparison.Ordinal);
         first.DisposeGate.Set();
         await stopping;
     }

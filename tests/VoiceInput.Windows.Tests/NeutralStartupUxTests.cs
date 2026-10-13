@@ -32,6 +32,7 @@ public sealed class NeutralStartupUxTests
             ReadRepositoryFile("docs", "ARCHITECTURE.md"),
             ReadRepositoryFile("installer", "README-RU.txt"),
             ReadRepositoryFile("src", "VoiceInput.App", "App.xaml.cs"),
+            ReadRepositoryFile("src", "VoiceInput.App", "TrayMenu.cs"),
             ReadRepositoryFile("src", "VoiceInput.App", "GlobalHotkeyRegistration.cs"),
         };
 
@@ -48,12 +49,13 @@ public sealed class NeutralStartupUxTests
     [Fact]
     public void TrayMenuExplainsUniversalShortcuts()
     {
-        var source = ReadRepositoryFile("src", "VoiceInput.App", "App.xaml.cs");
+        var source = ReadRepositoryFile("src", "VoiceInput.App", "TrayMenu.cs");
 
+        // Each row names the action; the shortcut sits in the menu's own shortcut column.
         Assert.Contains("Горячие клавиши", source, StringComparison.Ordinal);
-        Assert.Contains("Удерживать для записи — Ctrl + Shift + Space", source, StringComparison.Ordinal);
-        Assert.Contains("Начать или завершить — Ctrl + Shift + K", source, StringComparison.Ordinal);
-        Assert.Contains("Отменить диктовку — Esc", source, StringComparison.Ordinal);
+        Assert.Contains("(\"Удерживать для записи\") { ShortcutKeyDisplayString = \"Ctrl + Shift + Space\"", source, StringComparison.Ordinal);
+        Assert.Contains("(\"Начать или завершить\") { ShortcutKeyDisplayString = \"Ctrl + Shift + K\"", source, StringComparison.Ordinal);
+        Assert.Contains("(\"Отменить диктовку\") { ShortcutKeyDisplayString = \"Esc\"", source, StringComparison.Ordinal);
     }
 
     private static List<int> AllIndexesOf(string text, string value)

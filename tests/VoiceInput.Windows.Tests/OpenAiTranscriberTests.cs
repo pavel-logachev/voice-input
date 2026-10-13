@@ -78,7 +78,7 @@ public sealed class OpenAiTranscriberTests
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
             () => transcriber.TranscribeAsync(Speech(), CancellationToken.None).AsTask());
 
-        Assert.Contains("повреждённый", error.Message, StringComparison.Ordinal);
+        Assert.Contains("поврежденный", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

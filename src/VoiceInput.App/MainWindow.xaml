@@ -4,8 +4,7 @@
         xmlns:local="clr-namespace:VoiceInput.App"
         Title="Voice Input"
         Icon="pack://application:,,,/VoiceInput.ico"
-        Width="300"
-        MinHeight="76"
+        Width="416"
         SizeToContent="Height"
         WindowStyle="None"
         ResizeMode="NoResize"
@@ -16,8 +15,8 @@
         Topmost="True"
         Focusable="False"
         IsHitTestVisible="False"
-        TextOptions.TextFormattingMode="Display"
-        TextOptions.TextRenderingMode="ClearType"
+        FontFamily="Segoe UI Variable Text, Segoe UI"
+        TextOptions.TextRenderingMode="Grayscale"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
     <Window.Resources>
@@ -25,14 +24,14 @@
         <Storyboard x:Key="RippleStoryboard" RepeatBehavior="Forever">
             <DoubleAnimation Storyboard.TargetName="Ripple"
                              Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                             From="1" To="1.75" Duration="0:0:1.5">
+                             From="1" To="1.7" Duration="0:0:1.5">
                 <DoubleAnimation.EasingFunction>
                     <CubicEase EasingMode="EaseOut" />
                 </DoubleAnimation.EasingFunction>
             </DoubleAnimation>
             <DoubleAnimation Storyboard.TargetName="Ripple"
                              Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                             From="1" To="1.75" Duration="0:0:1.5">
+                             From="1" To="1.7" Duration="0:0:1.5">
                 <DoubleAnimation.EasingFunction>
                     <CubicEase EasingMode="EaseOut" />
                 </DoubleAnimation.EasingFunction>
@@ -42,11 +41,18 @@
                              From="0.6" To="0" Duration="0:0:1.5" />
         </Storyboard>
 
-        <!-- Recognising and typing: the indicator breathes. -->
-        <Storyboard x:Key="BreathStoryboard" RepeatBehavior="Forever" AutoReverse="True">
-            <DoubleAnimation Storyboard.TargetName="TallyLens"
+        <!-- Recognising: the arc turns. -->
+        <Storyboard x:Key="SpinStoryboard" RepeatBehavior="Forever">
+            <DoubleAnimation Storyboard.TargetName="SpinnerTurn"
+                             Storyboard.TargetProperty="Angle"
+                             From="0" To="360" Duration="0:0:0.9" />
+        </Storyboard>
+
+        <!-- Typing: the text cursor blinks. -->
+        <Storyboard x:Key="BlinkStoryboard" RepeatBehavior="Forever" AutoReverse="True">
+            <DoubleAnimation Storyboard.TargetName="GlyphCaret"
                              Storyboard.TargetProperty="Opacity"
-                             From="1" To="0.4" Duration="0:0:0.7">
+                             From="1" To="0.25" Duration="0:0:0.45">
                 <DoubleAnimation.EasingFunction>
                     <SineEase EasingMode="EaseInOut" />
                 </DoubleAnimation.EasingFunction>
@@ -54,10 +60,10 @@
         </Storyboard>
 
         <Storyboard x:Key="FadeInStoryboard">
-            <DoubleAnimation Storyboard.TargetName="Frame"
+            <DoubleAnimation Storyboard.TargetName="Stage"
                              Storyboard.TargetProperty="Opacity"
                              From="0" To="1" Duration="0:0:0.16" />
-            <DoubleAnimation Storyboard.TargetName="FrameShift"
+            <DoubleAnimation Storyboard.TargetName="StageShift"
                              Storyboard.TargetProperty="Y"
                              From="10" To="0" Duration="0:0:0.22">
                 <DoubleAnimation.EasingFunction>
@@ -67,181 +73,188 @@
         </Storyboard>
 
         <Storyboard x:Key="FadeOutStoryboard">
-            <DoubleAnimation Storyboard.TargetName="Frame"
+            <DoubleAnimation Storyboard.TargetName="Stage"
                              Storyboard.TargetProperty="Opacity"
                              To="0" Duration="0:0:0.14" />
-            <DoubleAnimation Storyboard.TargetName="FrameShift"
+            <DoubleAnimation Storyboard.TargetName="StageShift"
                              Storyboard.TargetProperty="Y"
                              To="6" Duration="0:0:0.14" />
         </Storyboard>
     </Window.Resources>
 
-    <Border x:Name="Frame"
-            Padding="14,12,14,12"
-            CornerRadius="16"
-            Background="#F20E1016"
-            BorderBrush="#38FFFFFF"
-            BorderThickness="1">
-        <Border.RenderTransform>
-            <TranslateTransform x:Name="FrameShift" />
-        </Border.RenderTransform>
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="22"
-                              Direction="270"
-                              Opacity="0.36"
-                              ShadowDepth="4"
-                              Color="#03050A" />
-        </Border.Effect>
-        <Grid VerticalAlignment="Center">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="30" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+    <!-- The margin is transparent room for the shadow; the window itself lets mouse clicks through. -->
+    <Grid x:Name="Stage" Margin="28" HorizontalAlignment="Center">
+        <Grid.RenderTransform>
+            <TranslateTransform x:Name="StageShift" />
+        </Grid.RenderTransform>
 
-            <!-- State light: a ring with a lens (and an outgoing ripple while listening). -->
-            <Grid Grid.Row="0"
-                  Grid.Column="0"
-                  Width="20"
-                  Height="20"
-                  HorizontalAlignment="Left"
-                  VerticalAlignment="Center">
-                <Ellipse x:Name="Ripple"
-                         Width="20"
-                         Height="20"
-                         Opacity="0"
-                         Stroke="#FF756D"
-                         StrokeThickness="1.5"
-                         RenderTransformOrigin="0.5,0.5">
-                    <Ellipse.RenderTransform>
-                        <ScaleTransform ScaleX="1" ScaleY="1" />
-                    </Ellipse.RenderTransform>
-                </Ellipse>
-                <Border x:Name="TallyRing"
-                        Width="20"
-                        Height="20"
-                        CornerRadius="10"
-                        BorderBrush="#66FF756D"
-                        BorderThickness="1.5">
-                    <Ellipse x:Name="TallyLens"
-                             Width="9"
-                             Height="9"
-                             Fill="#FF756D" />
-                </Border>
-            </Grid>
+        <Border x:Name="Shadow" CornerRadius="24" Background="#FF0B0B0E">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="24"
+                                  Direction="270"
+                                  Opacity="0.42"
+                                  ShadowDepth="6"
+                                  Color="#000000" />
+            </Border.Effect>
+        </Border>
 
-            <StackPanel Grid.Row="0"
-                        Grid.Column="1"
-                        Orientation="Horizontal"
-                        VerticalAlignment="Center">
+        <Border x:Name="Frame"
+                Padding="14,13"
+                CornerRadius="24"
+                Background="{DynamicResource Brush.OverlaySurface}"
+                BorderBrush="{DynamicResource Brush.OverlayBorder}"
+                BorderThickness="1">
+            <Grid x:Name="Layout" VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" MinHeight="22" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Stage mark: each stage has its own shape, not only its own colour. -->
+                <Grid x:Name="Glyph"
+                      Width="20"
+                      Height="20"
+                      VerticalAlignment="Center">
+                    <!-- Recording: a tally light with an outgoing ripple. -->
+                    <Grid x:Name="GlyphRecord">
+                        <Ellipse x:Name="Ripple"
+                                 Opacity="0"
+                                 Stroke="{Binding Fill, ElementName=TallyLens}"
+                                 StrokeThickness="1.5"
+                                 RenderTransformOrigin="0.5,0.5">
+                            <Ellipse.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1" />
+                            </Ellipse.RenderTransform>
+                        </Ellipse>
+                        <Ellipse x:Name="TallyRing" StrokeThickness="1.5" />
+                        <Ellipse x:Name="TallyLens" Width="10" Height="10" />
+                    </Grid>
+
+                    <!-- Recognising: a turning arc over a faint ring. -->
+                    <Grid x:Name="GlyphSpinner" Visibility="Collapsed">
+                        <Ellipse x:Name="SpinnerTrack" Margin="2" StrokeThickness="2" Opacity="0.28" />
+                        <Path x:Name="SpinnerArc"
+                              Data="M10,3 A7,7 0 0 1 17,10"
+                              StrokeThickness="2"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
+                              RenderTransformOrigin="0.5,0.5">
+                            <Path.RenderTransform>
+                                <RotateTransform x:Name="SpinnerTurn" CenterX="0" CenterY="0" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Grid>
+
+                    <!-- Typing: a text cursor. -->
+                    <Path x:Name="GlyphCaret"
+                          Data="M6.5,3.5 H13.5 M10,3.5 V16.5 M6.5,16.5 H13.5"
+                          StrokeThickness="2"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round"
+                          Visibility="Collapsed" />
+
+                    <!-- Outcomes: a filled disc with a mark. -->
+                    <Grid x:Name="GlyphDisc" Visibility="Collapsed">
+                        <Ellipse x:Name="DiscFill" Margin="1" />
+                        <Path x:Name="DiscMark"
+                              Stroke="{DynamicResource Brush.OnAccent}"
+                              StrokeThickness="2"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
+                              StrokeLineJoin="Round" />
+                    </Grid>
+
+                    <!-- Neutral note: a quiet ring. -->
+                    <Grid x:Name="GlyphNote" Visibility="Collapsed">
+                        <Ellipse x:Name="NoteRing" Margin="2" StrokeThickness="2" />
+                        <Ellipse x:Name="NoteDot" Width="4" Height="4" />
+                    </Grid>
+                </Grid>
+
                 <TextBlock x:Name="StatusText"
+                           Grid.Column="1"
+                           Margin="10,0,0,0"
                            VerticalAlignment="Center"
-                           Foreground="#FAFAFC"
-                           FontFamily="Segoe UI Variable Display, Segoe UI Variable Text, Segoe UI"
-                           FontSize="15"
+                           Foreground="{DynamicResource Brush.OverlayText}"
+                           FontSize="14"
                            FontWeight="SemiBold"
                            Text="Voice Input" />
+
                 <TextBlock x:Name="TimerText"
-                           Margin="10,1,0,0"
+                           Grid.Column="3"
+                           MinWidth="27"
+                           Margin="10,0,0,0"
                            VerticalAlignment="Center"
-                           Foreground="#8F94A8"
-                           FontFamily="Segoe UI Variable Text, Segoe UI"
-                           FontSize="12"
+                           Foreground="{DynamicResource Brush.OverlayMuted}"
+                           FontSize="12.5"
                            Text="0:00"
                            Visibility="Collapsed" />
-            </StackPanel>
 
-            <!-- A little keycap, so the cancel gesture is discoverable. -->
-            <Border x:Name="CancelHint"
-                    Grid.Row="0"
-                    Grid.Column="2"
-                    MinWidth="34"
-                    Height="24"
-                    HorizontalAlignment="Right"
-                    VerticalAlignment="Center"
-                    Background="#141E2230"
-                    BorderBrush="#4AFFFFFF"
-                    BorderThickness="1,1,1,2"
-                    CornerRadius="6">
-                <TextBlock x:Name="CancelKeyText"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           Foreground="#C9CCD6"
-                           FontFamily="Segoe UI Variable Text, Segoe UI"
-                           FontSize="10.5"
-                           FontWeight="SemiBold"
-                           Text="Esc" />
-            </Border>
-
-            <Grid x:Name="ActivityHost"
-                  Grid.Row="1"
-                  Grid.Column="1"
-                  Grid.ColumnSpan="2"
-                  Height="18"
-                  Margin="0,8,0,0"
-                  HorizontalAlignment="Stretch">
-                <local:RecordingLevelMeter x:Name="AudioMeter"
-                                           Height="18"
-                                           HorizontalAlignment="Stretch" />
-                <Grid x:Name="ProcessingIndicator"
-                      Height="8"
-                      HorizontalAlignment="Stretch"
-                      VerticalAlignment="Center"
-                      ClipToBounds="True"
-                      Visibility="Collapsed">
-                    <Border x:Name="ProcessingTrack"
-                            Height="2"
-                            VerticalAlignment="Center"
-                            Background="#3F565B6B"
-                            CornerRadius="1" />
-                    <Rectangle x:Name="ProcessingCue"
-                               Width="56"
-                               Height="2"
-                               HorizontalAlignment="Left"
+                <!-- A little keycap, so the cancel gesture is discoverable. -->
+                <Border x:Name="CancelHint"
+                        Grid.Column="4"
+                        MinWidth="32"
+                        Height="22"
+                        Margin="12,0,0,0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Background="{DynamicResource Brush.KeyCap}"
+                        BorderBrush="{DynamicResource Brush.KeyCapBorder}"
+                        BorderThickness="1"
+                        CornerRadius="6">
+                    <TextBlock HorizontalAlignment="Center"
                                VerticalAlignment="Center"
-                               RadiusX="1"
-                               RadiusY="1"
-                               Fill="#A99BFF">
-                        <Rectangle.RenderTransform>
-                            <TranslateTransform X="-56" />
-                        </Rectangle.RenderTransform>
-                        <Rectangle.Triggers>
-                            <EventTrigger RoutedEvent="FrameworkElement.Loaded">
-                                <BeginStoryboard>
-                                    <Storyboard RepeatBehavior="Forever">
-                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
-                                                         From="-56"
-                                                         To="240"
-                                                         Duration="0:0:1.1"
-                                                         AccelerationRatio="0.2"
-                                                         DecelerationRatio="0.2" />
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </EventTrigger>
-                        </Rectangle.Triggers>
-                    </Rectangle>
-                </Grid>
-            </Grid>
+                               Margin="0,0,0,1"
+                               Foreground="{DynamicResource Brush.KeyCapText}"
+                               FontSize="10.5"
+                               FontWeight="SemiBold"
+                               Text="Esc" />
+                </Border>
 
-            <TextBlock x:Name="DetailText"
-                       Grid.Row="2"
-                       Grid.Column="1"
-                       Grid.ColumnSpan="2"
-                       MaxWidth="236"
-                       Margin="0,6,0,0"
-                       HorizontalAlignment="Left"
-                       TextAlignment="Left"
-                       TextWrapping="Wrap"
-                       Foreground="#B7BBC7"
-                       FontFamily="Segoe UI Variable Text, Segoe UI"
-                       FontSize="11.5"
-                       LineHeight="16"
-                       Visibility="Collapsed" />
-        </Grid>
-    </Border>
+                <Grid x:Name="ActivityHost"
+                      Grid.Column="2"
+                      Height="18"
+                      Margin="14,0,0,0"
+                      VerticalAlignment="Center"
+                      HorizontalAlignment="Stretch">
+                    <local:RecordingLevelMeter x:Name="AudioMeter" />
+                    <Grid x:Name="ProcessingIndicator"
+                          Height="4"
+                          VerticalAlignment="Center"
+                          ClipToBounds="True"
+                          Visibility="Collapsed">
+                        <Border Background="{DynamicResource Brush.OverlayTrack}" CornerRadius="2" />
+                        <Border x:Name="ProcessingCue"
+                                HorizontalAlignment="Left"
+                                CornerRadius="2">
+                            <Border.RenderTransform>
+                                <TranslateTransform x:Name="ProcessingCueShift" />
+                            </Border.RenderTransform>
+                        </Border>
+                    </Grid>
+                </Grid>
+
+                <TextBlock x:Name="DetailText"
+                           Grid.Row="2"
+                           Grid.Column="1"
+                           Grid.ColumnSpan="4"
+                           MaxWidth="290"
+                           Margin="10,3,0,1"
+                           HorizontalAlignment="Left"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource Brush.OverlayMuted}"
+                           FontSize="12.5"
+                           LineHeight="17"
+                           Visibility="Collapsed" />
+            </Grid>
+        </Border>
+    </Grid>
 </Window>

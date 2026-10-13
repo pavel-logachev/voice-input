@@ -75,11 +75,11 @@ public sealed class DpapiOpenAiApiKeyProvider : IOpenAiApiKeyProvider
         }
         catch (CryptographicException)
         {
-            throw new InvalidOperationException("Не удалось прочитать защищённый API-ключ OpenAI.");
+            throw new InvalidOperationException("Не удалось прочитать защищенный API-ключ OpenAI.");
         }
         catch (IOException)
         {
-            throw new InvalidOperationException("Не удалось открыть защищённый API-ключ OpenAI.");
+            throw new InvalidOperationException("Не удалось открыть защищенный API-ключ OpenAI.");
         }
 
         try
@@ -87,7 +87,7 @@ public sealed class DpapiOpenAiApiKeyProvider : IOpenAiApiKeyProvider
             var text = Encoding.UTF8.GetString(plain).Trim();
             if (!LooksLikeApiKey(text))
             {
-                throw new InvalidOperationException("Защищённый API-ключ OpenAI повреждён.");
+                throw new InvalidOperationException("Защищенный API-ключ OpenAI поврежден.");
             }
 
             return text;

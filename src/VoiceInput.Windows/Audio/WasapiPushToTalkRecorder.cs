@@ -62,7 +62,7 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
                     if (!cleanupTask.IsCompleted)
                     {
                         throw new InvalidOperationException(
-                            "Микрофон ещё завершает предыдущую запись. Повторите через несколько секунд.");
+                            "Микрофон еще завершает предыдущую запись. Повторите через несколько секунд.");
                     }
 
                     var session = capture = captureFactory();

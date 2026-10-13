@@ -5,6 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- The palette of the application is checked here, and its colours are WPF types. -->
+    <UseWPF>true</UseWPF>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,9 +18,13 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <!-- WPF projects leave these two out of the implicit usings. -->
+    <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\VoiceInput.App\VoiceInput.App.csproj" />
     <ProjectReference Include="..\..\src\VoiceInput.Windows\VoiceInput.Windows.csproj" />
   </ItemGroup>
 

@@ -118,7 +118,7 @@ public sealed class OpenAiTranscriber : ITranscriber
         }
         catch (JsonException)
         {
-            throw new InvalidOperationException("OpenAI вернул повреждённый ответ.");
+            throw new InvalidOperationException("OpenAI вернул поврежденный ответ.");
         }
         catch (IOException)
         {

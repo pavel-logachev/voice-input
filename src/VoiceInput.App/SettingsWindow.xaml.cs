@@ -2,12 +2,15 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using VoiceInput.Windows.Audio;
 using VoiceInput.Windows.Settings;
 using VoiceInput.Windows.Transcription;
 using Color = System.Windows.Media.Color;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace VoiceInput.App;
 
@@ -41,6 +44,9 @@ internal interface ISettingsHost
 public partial class SettingsWindow : Window
 {
     private const int DwmUseImmersiveDarkMode = 20;
+    private const int DwmBorderColor = 34;
+    private const int DwmCaptionColor = 35;
+    private const int DwmTextColor = 36;
     private const string RepositoryUrl = "https://github.com/pavel-logachev/voice-input";
 
     private static readonly (string? Code, string Label)[] Languages =
@@ -53,13 +59,21 @@ public partial class SettingsWindow : Window
     ];
 
     private readonly ISettingsHost host;
+    private readonly UiPalette palette = Theme.Current;
     private bool loading;
 
     internal SettingsWindow(ISettingsHost host)
     {
         this.host = host;
         InitializeComponent();
-        SourceInitialized += (_, _) => UseDarkTitleBar();
+        Theme.Apply(this);
+        HeaderIcon.Source = LoadHeaderIcon();
+        SourceInitialized += (_, _) =>
+        {
+            UiEnvironment.ApplyTextFormatting(this);
+            MatchTitleBar();
+        };
+        DpiChanged += (_, _) => UiEnvironment.ApplyTextFormatting(this);
         OpenAiRadio.Checked += OnEngineChanged;
         LocalRadio.Checked += OnEngineChanged;
         AutostartBox.Click += OnAutostartClicked;
@@ -69,14 +83,35 @@ public partial class SettingsWindow : Window
         LanguageBox.SelectionChanged += OnLanguageChanged;
         MicrophoneBox.SelectionChanged += OnMicrophoneChanged;
         KeyBox.PasswordChanged += (_, _) => RefreshKeyButtons();
+        KeyBox.PreviewKeyDown += OnKeyBoxKeyDown;
         SiteButton.Click += (_, _) => Open(RepositoryUrl);
         IssueButton.Click += (_, _) => Open(RepositoryUrl + "/issues/new");
         CloseButton.Click += (_, _) => Close();
-        VersionText.Text = $"v{host.Version}";
+        VersionText.Text = host.Version;
         // Never taller than the screen; the content scrolls on small displays.
-        MaxHeight = Math.Max(420, SystemParameters.WorkArea.Height - 48);
-        ConfigureEngineChoice();
+        MaxHeight = Math.Max(420, SystemParameters.WorkArea.Height - 24);
+        if (!host.LocalEngineAvailable)
+        {
+            // With a single engine there is nothing to choose.
+            EnginePanel.Visibility = Visibility.Collapsed;
+            EngineDivider.Visibility = Visibility.Collapsed;
+        }
+
+        if (palette.HighContrast)
+        {
+            KeyChip.BorderThickness = new Thickness(1);
+            KeyChip.BorderBrush = Theme.Brush(palette.Text);
+        }
+
         Reload();
+    }
+
+    private enum Status
+    {
+        Neutral,
+        Good,
+        Warn,
+        Bad,
     }
 
     internal void Reload()
@@ -85,10 +120,14 @@ public partial class SettingsWindow : Window
         try
         {
             var settings = host.Current;
-            OpenAiRadio.IsChecked = settings.Engine == TranscriptionEngine.OpenAi;
+            var openAi = settings.Engine == TranscriptionEngine.OpenAi;
+            OpenAiRadio.IsChecked = openAi;
             LocalRadio.IsChecked = settings.Engine == TranscriptionEngine.Local;
+            EngineIntro.Text = openAi
+                ? "Быстро и точно. Запись отправляется в OpenAI по вашему API-ключу, платит владелец ключа."
+                : "Без интернета и без ключа, запись не покидает компьютер. При первом включении загружается модель.";
             AutostartBox.IsChecked = settings.StartWithWindows;
-            KeyCard.Visibility = settings.Engine == TranscriptionEngine.OpenAi ? Visibility.Visible : Visibility.Collapsed;
+            KeyCard.Visibility = openAi ? Visibility.Visible : Visibility.Collapsed;
             FillLanguages(settings.Language);
             FillMicrophones(settings.MicrophoneId);
             RefreshKeyState();
@@ -99,18 +138,18 @@ public partial class SettingsWindow : Window
         }
     }
 
-    // With a single engine there is nothing to choose: show a plain statement instead of a one-item radio list.
-    private void ConfigureEngineChoice()
+    // The largest image of the icon: the default pick is a small one, and it blurs at 150–200 %.
+    private static BitmapFrame? LoadHeaderIcon()
     {
-        if (host.LocalEngineAvailable)
+        var resource = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/VoiceInput.ico", UriKind.Absolute));
+        if (resource is null)
         {
-            return;
+            return null;
         }
 
-        LocalRadio.Visibility = Visibility.Collapsed;
-        OpenAiRadio.Visibility = Visibility.Collapsed;
-        EngineIntro.Text = "Речь превращается в текст через OpenAI по вашему API-ключу. Звук уходит в OpenAI только в момент диктовки.";
-        EngineIntro.Margin = new Thickness(0, 3, 0, 12);
+        using var stream = resource.Stream;
+        var decoder = new IconBitmapDecoder(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+        return decoder.Frames.MaxBy(frame => frame.PixelWidth);
     }
 
     private void FillLanguages(string? selected)
@@ -137,7 +176,7 @@ public partial class SettingsWindow : Window
         ComboBoxItem? selected = string.IsNullOrWhiteSpace(selectedId) ? defaultItem : null;
         foreach (var microphone in host.Microphones)
         {
-            var item = new ComboBoxItem { Content = microphone.Name, Tag = microphone.Id };
+            var item = new ComboBoxItem { Content = microphone.Name, Tag = microphone.Id, ToolTip = microphone.Name };
             MicrophoneBox.Items.Add(item);
             if (string.Equals(microphone.Id, selectedId, StringComparison.Ordinal))
             {
@@ -148,7 +187,7 @@ public partial class SettingsWindow : Window
         // A saved microphone that is unplugged right now: keep the choice visible, Windows default is used meanwhile.
         if (selected is null)
         {
-            selected = new ComboBoxItem { Content = "Выбранный микрофон не подключён · используется микрофон Windows", Tag = selectedId };
+            selected = new ComboBoxItem { Content = "Не подключен — работает микрофон Windows", Tag = selectedId };
             MicrophoneBox.Items.Add(selected);
         }
 
@@ -158,23 +197,35 @@ public partial class SettingsWindow : Window
     private void RefreshKeyState()
     {
         var has = host.HasApiKey;
-        KeyChipText.Text = has ? "Ключ сохранён" : "Ключ не задан";
-        var good = has;
-        KeyChip.Background = new SolidColorBrush(good ? Color.FromRgb(0x14, 0x30, 0x25) : Color.FromRgb(0x3A, 0x2D, 0x12));
-        KeyChipDot.Fill = new SolidColorBrush(good ? Color.FromRgb(0x69, 0xD6, 0xA4) : Color.FromRgb(0xF2, 0xC6, 0x6D));
-        KeyChipText.Foreground = new SolidColorBrush(good ? Color.FromRgb(0x9D, 0xE6, 0xC4) : Color.FromRgb(0xF2, 0xD8, 0xA0));
+        var colour = has ? palette.Success : palette.Warning;
+        KeyChipText.Text = has ? "Ключ сохранен" : "Ключ не задан";
+        KeyChipText.Foreground = Theme.Brush(palette.HighContrast ? palette.Text : colour);
+        KeyChipDot.Fill = Theme.Brush(colour);
+        KeyChip.Background = Theme.Brush(palette.HighContrast ? palette.Window : Theme.WithAlpha(colour, 0x24));
         KeyState.Text = has
-            ? "Чтобы заменить ключ, вставьте новый и нажмите «Сохранить»."
-            : "Он нужен для распознавания через OpenAI и начинается с «sk-». Создать ключ можно на platform.openai.com.";
+            ? "Звук уходит в OpenAI только в момент диктовки. Ключ зашифрован и доступен только вашей учетной записи Windows."
+            : "Ключ начинается с «sk-», создать его можно на platform.openai.com. Звук уходит в OpenAI только в момент диктовки.";
+        KeyPlaceholder.Text = has ? "Новый ключ — чтобы заменить" : "sk-…";
         RefreshKeyButtons();
     }
 
     private void RefreshKeyButtons()
     {
         var typed = !string.IsNullOrWhiteSpace(KeyBox.Password);
+        KeyPlaceholder.Visibility = KeyBox.SecurePassword.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         SaveKeyButton.IsEnabled = typed;
         CheckKeyButton.IsEnabled = typed || host.HasApiKey;
         DeleteKeyButton.IsEnabled = host.HasApiKey;
+    }
+
+    // Enter in the key field saves the key; without this the default button would close the window instead.
+    private void OnKeyBoxKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Enter or Key.Return && SaveKeyButton.IsEnabled)
+        {
+            e.Handled = true;
+            OnSaveKeyClicked(sender, e);
+        }
     }
 
     private async void OnEngineChanged(object sender, RoutedEventArgs e)
@@ -230,7 +281,7 @@ public partial class SettingsWindow : Window
 
         KeyBox.Clear();
         RefreshKeyState();
-        ShowKeyResult("Ключ сохранён. Проверяю…", Status.Neutral);
+        ShowKeyResult("Ключ сохранен. Проверяю…", Status.Neutral);
         if (host.Current.Engine == TranscriptionEngine.OpenAi)
         {
             // Re-apply so the running engine picks the new key up right away.
@@ -272,43 +323,51 @@ public partial class SettingsWindow : Window
     {
         host.DeleteApiKey();
         RefreshKeyState();
-        ShowKeyResult("Ключ удалён.", Status.Neutral);
+        ShowKeyResult("Ключ удален.", Status.Neutral);
     }
 
     private async Task ApplyAsync(AppSettings next)
     {
-        Message.Text = "Применяю…";
+        // Disabling the window drops the keyboard focus; remember where it was.
+        var focused = FocusedControl();
+        Message.Visibility = Visibility.Collapsed;
+        Cursor = System.Windows.Input.Cursors.Wait;
         IsEnabled = false;
         try
         {
             var error = await host.ApplyAsync(next);
             Message.Text = error ?? string.Empty;
+            Message.Foreground = Theme.Brush(palette.HighContrast ? palette.Text : palette.Error);
+            Message.Visibility = error is null ? Visibility.Collapsed : Visibility.Visible;
         }
         finally
         {
             IsEnabled = true;
+            Cursor = null;
             Reload();
+            focused?.Focus();
         }
     }
 
-    private enum Status
-    {
-        Neutral,
-        Good,
-        Warn,
-        Bad,
-    }
+    private static System.Windows.Controls.Control? FocusedControl() =>
+        Keyboard.FocusedElement switch
+        {
+            ComboBoxItem item => ItemsControl.ItemsControlFromItemContainer(item),
+            System.Windows.Controls.Control control => control,
+            _ => null,
+        };
 
     private void ShowKeyResult(string text, Status status)
     {
         KeyResult.Text = text;
         KeyResult.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
-        KeyResult.Foreground = new SolidColorBrush(status switch
+        KeyResult.Foreground = Theme.Brush(status switch
         {
-            Status.Good => Color.FromRgb(0x69, 0xD6, 0xA4),
-            Status.Warn => Color.FromRgb(0xF2, 0xC6, 0x6D),
-            Status.Bad => Color.FromRgb(0xFF, 0x6B, 0x83),
-            _ => Color.FromRgb(0x9E, 0xA3, 0xB3),
+            _ when palette.HighContrast => palette.Text,
+            Status.Good => palette.Success,
+            Status.Warn => palette.Warning,
+            Status.Bad => palette.Error,
+            _ => palette.TextMuted,
         });
     }
 
@@ -324,12 +383,26 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void UseDarkTitleBar()
+    // The title bar takes the colour of the window, so the window reads as one surface (Windows 11; older systems ignore it).
+    private void MatchTitleBar()
     {
+        if (palette.HighContrast)
+        {
+            return;
+        }
+
         var handle = new WindowInteropHelper(this).Handle;
         var enabled = 1;
         _ = NativeMethods.DwmSetWindowAttribute(handle, DwmUseImmersiveDarkMode, ref enabled, sizeof(int));
+        var caption = ColorRef(palette.Window);
+        _ = NativeMethods.DwmSetWindowAttribute(handle, DwmCaptionColor, ref caption, sizeof(int));
+        var text = ColorRef(palette.Text);
+        _ = NativeMethods.DwmSetWindowAttribute(handle, DwmTextColor, ref text, sizeof(int));
+        var border = ColorRef(palette.CardBorder);
+        _ = NativeMethods.DwmSetWindowAttribute(handle, DwmBorderColor, ref border, sizeof(int));
     }
+
+    private static int ColorRef(Color color) => color.R | (color.G << 8) | (color.B << 16);
 
     private static class NativeMethods
     {

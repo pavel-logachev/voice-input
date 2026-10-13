@@ -33,12 +33,8 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
     private SingleInstanceLease? singleInstance;
     private GlobalHotkeyRegistration? hotkey;
     private Forms.NotifyIcon? trayIcon;
-    private Forms.ContextMenuStrip? trayMenu;
+    private TrayMenu? trayMenu;
     private Icon? applicationIcon;
-    private Forms.ToolStripLabel? statusItem;
-    private Forms.ToolStripMenuItem? openAiItem;
-    private Forms.ToolStripMenuItem? localItem;
-    private Forms.ToolStripMenuItem? microphoneMenu;
     private DictationWorkflow? workflow;
     private IAudioRecorder? recorder;
     private IRecordingLevelSource? recordingLevelSource;
@@ -222,7 +218,7 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
     {
         if (sessionRunning != 0)
         {
-            return "Идёт диктовка. Подождите её завершения.";
+            return "Идет диктовка. Подождите ее завершения.";
         }
 
         var engineChanged = next.Engine != settings.Engine || engine is null;
@@ -320,7 +316,7 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
             }
 
             Log("dictation-ready");
-            UpdateStatus(settings.Engine == TranscriptionEngine.OpenAi ? "Готов · OpenAI" : "Готов · на этом компьютере");
+            UpdateStatus(settings.Engine == TranscriptionEngine.OpenAi ? "Готов · OpenAI" : "Готов · на этом компьютере", TrayStatus.Ready);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -329,7 +325,7 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
         {
             Log($"initialization-error: {exception.GetType().Name}: {exception.Message}");
             initializationError = exception.Message;
-            UpdateStatus("Нужна настройка");
+            UpdateStatus("Нужна настройка", TrayStatus.Attention);
             trayIcon?.ShowBalloonTip(
                 8_000,
                 "Voice Input — не удалось запустить распознавание",
@@ -368,88 +364,27 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
 
     private Forms.NotifyIcon BuildTrayIcon()
     {
-        var menu = new Forms.ContextMenuStrip();
-        TrayMenuRenderer.Apply(menu);
+        var menu = new TrayMenu(engineFactory?.IsLocalEngineAvailable == true);
         trayMenu = menu;
-
-        statusItem = new Forms.ToolStripLabel("Запускаю распознавание…")
-        {
-            AutoSize = true,
-            Padding = new Forms.Padding(8, 7, 8, 6),
-            ForeColor = Forms.SystemInformation.HighContrast ? System.Drawing.SystemColors.MenuText : TrayMenuRenderer.Text,
-            Font = new Font(menu.Font, System.Drawing.FontStyle.Bold),
-        };
-        menu.Items.Add(statusItem);
-        menu.Items.Add(new Forms.ToolStripSeparator());
-
-        var engineMenu = new Forms.ToolStripMenuItem("Распознавание");
-        openAiItem = new Forms.ToolStripMenuItem("OpenAI, через интернет");
-        localItem = new Forms.ToolStripMenuItem("На этом компьютере (GigaAM)");
-        openAiItem.Click += async (_, _) => await SwitchEngineAsync(TranscriptionEngine.OpenAi);
-        localItem.Click += async (_, _) => await SwitchEngineAsync(TranscriptionEngine.Local);
-        engineMenu.DropDownItems.Add(openAiItem);
-        engineMenu.DropDownItems.Add(localItem);
-        engineMenu.Visible = engineFactory?.IsLocalEngineAvailable == true;
-        menu.Items.Add(engineMenu);
-
-        microphoneMenu = new Forms.ToolStripMenuItem("Микрофон");
-        microphoneMenu.DropDownOpening += (_, _) => FillMicrophoneMenu();
-        microphoneMenu.DropDownItems.Add(new Forms.ToolStripMenuItem("Загрузка…") { Enabled = false });
-        menu.Items.Add(microphoneMenu);
-
-        var settingsItem = new Forms.ToolStripMenuItem("Настройки…");
-        settingsItem.Click += (_, _) => ShowSettings();
-        menu.Items.Add(settingsItem);
-
-        var hotkeysItem = new Forms.ToolStripMenuItem("Горячие клавиши");
-        hotkeysItem.DropDownItems.Add(new Forms.ToolStripMenuItem("Удерживать для записи — Ctrl + Shift + Space") { Enabled = false });
-        hotkeysItem.DropDownItems.Add(new Forms.ToolStripMenuItem("Начать или завершить — Ctrl + Shift + K") { Enabled = false });
-        hotkeysItem.DropDownItems.Add(new Forms.ToolStripMenuItem("Отменить диктовку — Esc") { Enabled = false });
-        menu.Items.Add(hotkeysItem);
-        menu.Items.Add(new Forms.ToolStripSeparator());
-
-        var exitItem = new Forms.ToolStripMenuItem("Закрыть Voice Input");
-        exitItem.Click += (_, _) => Shutdown();
-        menu.Items.Add(exitItem);
+        menu.OpenAi.Click += async (_, _) => await SwitchEngineAsync(TranscriptionEngine.OpenAi);
+        menu.Local.Click += async (_, _) => await SwitchEngineAsync(TranscriptionEngine.Local);
+        // Built when the submenu opens, so a microphone plugged in a minute ago is already there.
+        menu.Microphone.DropDownOpening += (_, _) => menu.FillMicrophones(
+            AudioDeviceCatalog.ListMicrophones(),
+            settings.MicrophoneId,
+            async id => await SwitchMicrophoneAsync(id));
+        menu.Settings.Click += (_, _) => ShowSettings();
+        menu.Exit.Click += (_, _) => Shutdown();
 
         applicationIcon = LoadApplicationIcon();
         var icon = new Forms.NotifyIcon
         {
             Text = "Voice Input — запуск",
             Icon = applicationIcon,
-            ContextMenuStrip = menu,
+            ContextMenuStrip = menu.Strip,
         };
         icon.DoubleClick += (_, _) => ShowSettings();
         return icon;
-    }
-
-    // Built when the submenu opens, so a microphone plugged in a minute ago is already there.
-    private void FillMicrophoneMenu()
-    {
-        if (microphoneMenu is null)
-        {
-            return;
-        }
-
-        microphoneMenu.DropDownItems.Clear();
-        var current = settings.MicrophoneId;
-        var defaultItem = new Forms.ToolStripMenuItem("По умолчанию в Windows")
-        {
-            Checked = string.IsNullOrWhiteSpace(current),
-        };
-        defaultItem.Click += async (_, _) => await SwitchMicrophoneAsync(null);
-        microphoneMenu.DropDownItems.Add(defaultItem);
-
-        foreach (var microphone in AudioDeviceCatalog.ListMicrophones())
-        {
-            var item = new Forms.ToolStripMenuItem(microphone.Name)
-            {
-                Checked = string.Equals(microphone.Id, current, StringComparison.Ordinal),
-            };
-            var id = microphone.Id;
-            item.Click += async (_, _) => await SwitchMicrophoneAsync(id);
-            microphoneMenu.DropDownItems.Add(item);
-        }
     }
 
     private async Task SwitchMicrophoneAsync(string? microphoneId)
@@ -463,14 +398,10 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
 
     private void UpdateEngineChecks()
     {
-        if (openAiItem is not null)
+        if (trayMenu is not null)
         {
-            openAiItem.Checked = settings.Engine == TranscriptionEngine.OpenAi;
-        }
-
-        if (localItem is not null)
-        {
-            localItem.Checked = settings.Engine == TranscriptionEngine.Local;
+            trayMenu.OpenAi.Checked = settings.Engine == TranscriptionEngine.OpenAi;
+            trayMenu.Local.Checked = settings.Engine == TranscriptionEngine.Local;
         }
     }
 
@@ -714,16 +645,16 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
         trayIcon.ShowBalloonTip(8_000, "Voice Input — горячая клавиша занята", message, Forms.ToolTipIcon.Warning);
     }
 
-    private void UpdateStatus(string status)
+    private void UpdateStatus(string status, TrayStatus kind = TrayStatus.Busy)
     {
         if (disposed)
         {
             return;
         }
 
-        if (statusItem is not null)
+        if (trayMenu is not null)
         {
-            statusItem.Text = status;
+            trayMenu.SetStatus(status, kind);
         }
 
         if (trayIcon is not null)

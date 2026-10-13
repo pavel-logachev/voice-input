@@ -3,160 +3,106 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Voice Input — настройки"
         Icon="pack://application:,,,/VoiceInput.ico"
-        Width="500"
+        Width="480"
         SizeToContent="Height"
         MinHeight="360"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
-        Background="#0B0C14"
-        Foreground="#FAFAFC"
+        Background="{DynamicResource Brush.Window}"
+        Foreground="{DynamicResource Brush.Text}"
         FontFamily="Segoe UI Variable Text, Segoe UI"
         FontSize="13"
-        TextOptions.TextFormattingMode="Display"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
     <Window.Resources>
-        <SolidColorBrush x:Key="Muted" Color="#9EA3B3" />
-        <SolidColorBrush x:Key="Faint" Color="#6F7488" />
-        <SolidColorBrush x:Key="Accent" Color="#A99BFF" />
-        <SolidColorBrush x:Key="CardBackground" Color="#12141F" />
-        <SolidColorBrush x:Key="CardBorder" Color="#22263A" />
-        <SolidColorBrush x:Key="Field" Color="#0D0F18" />
-        <SolidColorBrush x:Key="FieldBorder" Color="#343954" />
-
-        <Style x:Key="Card" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource CardBackground}" />
-            <Setter Property="BorderBrush" Value="{StaticResource CardBorder}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="12" />
-            <Setter Property="Padding" Value="16,14" />
-            <Setter Property="Margin" Value="0,0,0,10" />
+        <!-- Keyboard focus: one ring for every control. -->
+        <Style x:Key="FocusRing">
+            <Setter Property="Control.Template">
+                <Setter.Value>
+                    <ControlTemplate>
+                        <Border Margin="-3"
+                                CornerRadius="10"
+                                BorderBrush="{DynamicResource Brush.Focus}"
+                                BorderThickness="2"
+                                SnapsToDevicePixels="True" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
-        <Style x:Key="SectionTitle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="13.5" />
+        <!-- For a row that fills its card: the ring stays inside the card. -->
+        <Style x:Key="InsetFocusRing">
+            <Setter Property="Control.Template">
+                <Setter.Value>
+                    <ControlTemplate>
+                        <Border Margin="4"
+                                CornerRadius="6"
+                                BorderBrush="{DynamicResource Brush.Focus}"
+                                BorderThickness="2"
+                                SnapsToDevicePixels="True" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SectionCaption" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
+            <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="2,0,0,6" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Card}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.CardBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+
+        <Style x:Key="RowDivider" TargetType="Border">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Margin" Value="14,0,0,0" />
+            <Setter Property="Background" Value="{DynamicResource Brush.Divider}" />
         </Style>
 
         <Style x:Key="Hint" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource Muted}" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
             <Setter Property="FontSize" Value="12" />
+            <Setter Property="LineHeight" Value="17" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
 
-        <!-- A selectable card for each recognition engine (shown only when more than one is available). -->
-        <Style x:Key="EngineCard" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="#FAFAFC" />
-            <Setter Property="Margin" Value="0,0,0,8" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Card"
-                                Padding="14,11"
-                                CornerRadius="10"
-                                Background="#0D0F18"
-                                BorderBrush="#2A2D3A"
-                                BorderThickness="1">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="26" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Border x:Name="Ring"
-                                        Width="16"
-                                        Height="16"
-                                        HorizontalAlignment="Left"
-                                        VerticalAlignment="Top"
-                                        Margin="0,2,0,0"
-                                        CornerRadius="8"
-                                        BorderBrush="#5A5F73"
-                                        BorderThickness="1.5">
-                                    <Ellipse x:Name="Dot"
-                                             Width="8"
-                                             Height="8"
-                                             Fill="#A99BFF"
-                                             Visibility="Collapsed" />
-                                </Border>
-                                <ContentPresenter Grid.Column="1" />
-                            </Grid>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Card" Property="BorderBrush" Value="#A99BFF" />
-                                <Setter TargetName="Ring" Property="BorderBrush" Value="#A99BFF" />
-                                <Setter TargetName="Dot" Property="Visibility" Value="Visible" />
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Card" Property="BorderBrush" Value="#454A63" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="#FAFAFC" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="CheckBox">
-                        <StackPanel Orientation="Horizontal" Background="Transparent">
-                            <Border x:Name="Box"
-                                    Width="18"
-                                    Height="18"
-                                    CornerRadius="5"
-                                    Background="#0D0F18"
-                                    BorderBrush="#5A5F73"
-                                    BorderThickness="1.5">
-                                <Path x:Name="Tick"
-                                      Data="M3.5,9 L7.5,13 L14.5,5"
-                                      Stroke="#0E1016"
-                                      StrokeThickness="2"
-                                      StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round"
-                                      StrokeLineJoin="Round"
-                                      Visibility="Collapsed" />
-                            </Border>
-                            <ContentPresenter Margin="10,0,0,0" VerticalAlignment="Center" />
-                        </StackPanel>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Box" Property="Background" Value="#A99BFF" />
-                                <Setter TargetName="Box" Property="BorderBrush" Value="#A99BFF" />
-                                <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Box" Property="BorderBrush" Value="#A99BFF" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="QuietButton" TargetType="Button">
-            <Setter Property="Foreground" Value="#FAFAFC" />
-            <Setter Property="Padding" Value="14,7" />
-            <Setter Property="Cursor" Value="Hand" />
+        <!-- Buttons: secondary by default, primary for the one main action, link for quiet navigation. -->
+        <Style x:Key="SecondaryButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Surface"
                                 Padding="{TemplateBinding Padding}"
                                 CornerRadius="8"
-                                Background="#1E2234"
-                                BorderBrush="#343954"
+                                Background="{DynamicResource Brush.Subtle}"
+                                BorderBrush="{DynamicResource Brush.FieldBorder}"
                                 BorderThickness="1">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,1" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Surface" Property="Background" Value="#282D45" />
+                                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Brush.SubtleHover}" />
+                                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Brush.FieldBorderHover}" />
                             </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Brush.SubtlePressed}" />
+                            </Trigger>
+                            <!-- Inactive: an outline only, so the label keeps its contrast. -->
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.4" />
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.TextFaint}" />
+                                <Setter TargetName="Surface" Property="Background" Value="Transparent" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -164,8 +110,8 @@
             </Setter>
         </Style>
 
-        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource QuietButton}">
-            <Setter Property="Foreground" Value="#0E1016" />
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.OnAccent}" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -173,15 +119,26 @@
                         <Border x:Name="Surface"
                                 Padding="{TemplateBinding Padding}"
                                 CornerRadius="8"
-                                Background="#A99BFF">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                Background="{DynamicResource Brush.Accent}"
+                                BorderBrush="{DynamicResource Brush.Accent}"
+                                BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,1" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Surface" Property="Background" Value="#BBB0FF" />
+                                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Brush.AccentHover}" />
+                                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Brush.AccentHover}" />
                             </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Brush.AccentPressed}" />
+                                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Brush.AccentPressed}" />
+                            </Trigger>
+                            <!-- Inactive is plainly inactive, not a washed-out accent. -->
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.4" />
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.TextFaint}" />
+                                <Setter Property="FontWeight" Value="Normal" />
+                                <Setter TargetName="Surface" Property="Background" Value="Transparent" />
+                                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Brush.FieldBorder}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -189,21 +146,23 @@
             </Setter>
         </Style>
 
-        <!-- Quiet text link. -->
         <Style x:Key="LinkButton" TargetType="Button">
-            <Setter Property="Foreground" Value="{StaticResource Muted}" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FontSize" Value="12" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <TextBlock x:Name="Label"
-                                   Text="{TemplateBinding Content}"
-                                   Foreground="{TemplateBinding Foreground}" />
+                        <Border Background="Transparent" Padding="2,3">
+                            <TextBlock x:Name="Label"
+                                       Text="{TemplateBinding Content}"
+                                       Foreground="{TemplateBinding Foreground}" />
+                        </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Label" Property="TextDecorations" Value="Underline" />
-                                <Setter TargetName="Label" Property="Foreground" Value="#FAFAFC" />
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -211,22 +170,83 @@
             </Setter>
         </Style>
 
-        <!-- Dark drop-down list. -->
+        <!-- The API key field. -->
+        <Style TargetType="PasswordBox">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource Brush.Text}" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource Brush.Accent}" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="PasswordBox">
+                        <Border x:Name="Frame"
+                                CornerRadius="8"
+                                Background="{DynamicResource Brush.Field}"
+                                BorderBrush="{DynamicResource Brush.FieldBorder}"
+                                BorderThickness="1">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource Brush.FieldBorderHover}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+                                <Setter TargetName="Frame" Property="BorderThickness" Value="2" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Drop-down list. -->
         <Style TargetType="ComboBoxItem">
-            <Setter Property="Foreground" Value="#FAFAFC" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
             <Setter Property="Padding" Value="10,7" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBoxItem">
                         <Border x:Name="Row" Padding="{TemplateBinding Padding}" CornerRadius="6" Background="Transparent">
-                            <ContentPresenter />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter>
+                                    <ContentPresenter.Resources>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                        </Style>
+                                    </ContentPresenter.Resources>
+                                </ContentPresenter>
+                                <Path x:Name="Tick"
+                                      Grid.Column="1"
+                                      Margin="12,0,0,0"
+                                      VerticalAlignment="Center"
+                                      Data="M0,4.2 L3.4,7.6 L9.4,0.8"
+                                      Stroke="{DynamicResource Brush.Accent}"
+                                      StrokeThickness="1.8"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round"
+                                      Visibility="Hidden" />
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="Row" Property="Background" Value="#262B43" />
-                            </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Row" Property="Background" Value="#2D3354" />
+                                <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource Brush.Highlight}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.OnHighlight}" />
+                                <Setter TargetName="Tick" Property="Stroke" Value="{DynamicResource Brush.OnHighlight}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -235,66 +255,68 @@
         </Style>
 
         <Style TargetType="ComboBox">
-            <Setter Property="Foreground" Value="#FAFAFC" />
-            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBox">
                         <Grid>
-                            <ToggleButton x:Name="Toggle"
-                                          Focusable="False"
+                            <Border x:Name="Frame"
+                                    Background="{DynamicResource Brush.Field}"
+                                    BorderBrush="{DynamicResource Brush.FieldBorder}"
+                                    BorderThickness="1"
+                                    CornerRadius="8" />
+                            <Path HorizontalAlignment="Right"
+                                  VerticalAlignment="Center"
+                                  Margin="0,1,13,0"
+                                  Data="M0,0 L4,4.4 L8,0"
+                                  Stroke="{DynamicResource Brush.TextMuted}"
+                                  StrokeThickness="1.6"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round" />
+                            <!-- The whole field opens the list; the frame above shows the state. -->
+                            <ToggleButton Focusable="False"
                                           IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
                                           ClickMode="Press">
                                 <ToggleButton.Template>
                                     <ControlTemplate TargetType="ToggleButton">
-                                        <Border x:Name="Frame"
-                                                Background="{StaticResource Field}"
-                                                BorderBrush="{StaticResource FieldBorder}"
-                                                BorderThickness="1"
-                                                CornerRadius="8">
-                                            <Path HorizontalAlignment="Right"
-                                                  VerticalAlignment="Center"
-                                                  Margin="0,0,12,0"
-                                                  Data="M0,0 L4.5,5 L9,0"
-                                                  Stroke="#9EA3B3"
-                                                  StrokeThickness="1.6"
-                                                  StrokeStartLineCap="Round"
-                                                  StrokeEndLineCap="Round"
-                                                  StrokeLineJoin="Round" />
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="Frame" Property="BorderBrush" Value="#A99BFF" />
-                                            </Trigger>
-                                            <Trigger Property="IsChecked" Value="True">
-                                                <Setter TargetName="Frame" Property="BorderBrush" Value="#A99BFF" />
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
+                                        <Border Background="Transparent" />
                                     </ControlTemplate>
                                 </ToggleButton.Template>
                             </ToggleButton>
-                            <ContentPresenter Margin="12,8,34,8"
+                            <ContentPresenter Margin="11,0,32,1"
                                               IsHitTestVisible="False"
                                               VerticalAlignment="Center"
                                               HorizontalAlignment="Left"
                                               Content="{TemplateBinding SelectionBoxItem}"
-                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" />
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
                             <Popup x:Name="PART_Popup"
                                    IsOpen="{TemplateBinding IsDropDownOpen}"
                                    Placement="Bottom"
+                                   HorizontalOffset="-8"
                                    AllowsTransparency="True"
                                    Focusable="False"
                                    PopupAnimation="Fade">
-                                <Border Margin="0,4,0,8"
+                                <Border Margin="8,4,8,12"
                                         MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                        MaxWidth="380"
                                         MaxHeight="260"
                                         Padding="4"
-                                        Background="#171A28"
-                                        BorderBrush="#343954"
+                                        Background="{DynamicResource Brush.Card}"
+                                        BorderBrush="{DynamicResource Brush.FieldBorder}"
                                         BorderThickness="1"
                                         CornerRadius="10">
                                     <Border.Effect>
-                                        <DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.5" Color="#000000" />
+                                        <DropShadowEffect BlurRadius="14" ShadowDepth="4" Direction="270" Opacity="0.45" Color="#000000" />
                                     </Border.Effect>
                                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                                         <ItemsPresenter />
@@ -302,191 +324,321 @@
                                 </Border>
                             </Popup>
                         </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource Brush.FieldBorderHover}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+                                <Setter TargetName="Frame" Property="BorderThickness" Value="2" />
+                            </Trigger>
+                            <Trigger Property="IsDropDownOpen" Value="True">
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
 
-        <!-- A keyboard key cap. -->
+        <!-- A whole settings row that switches: the label on the left, the switch on the right. -->
+        <Style x:Key="SwitchRow" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="MinHeight" Value="44" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource InsetFocusRing}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid Background="Transparent">
+                            <ContentPresenter Margin="{TemplateBinding Padding}" VerticalAlignment="Center" HorizontalAlignment="Left" />
+                            <Border x:Name="Track"
+                                    Width="38"
+                                    Height="20"
+                                    Margin="0,0,14,0"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    CornerRadius="10"
+                                    Background="{DynamicResource Brush.Field}"
+                                    BorderBrush="{DynamicResource Brush.FieldBorderHover}"
+                                    BorderThickness="1">
+                                <Ellipse x:Name="Knob"
+                                         Width="10"
+                                         Height="10"
+                                         Margin="4,0"
+                                         HorizontalAlignment="Left"
+                                         Fill="{DynamicResource Brush.TextMuted}" />
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="{DynamicResource Brush.Accent}" />
+                                <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+                                <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
+                                <Setter TargetName="Knob" Property="Width" Value="12" />
+                                <Setter TargetName="Knob" Property="Height" Value="12" />
+                                <Setter TargetName="Knob" Property="Margin" Value="3,0" />
+                                <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource Brush.OnAccent}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Two-way choice of the recognition engine (shown only when more than one is available). -->
+        <Style x:Key="Segment" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Surface" Height="28" CornerRadius="6" Background="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,1" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Brush.Highlight}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.OnHighlight}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- A keyboard key cap: the same one the overlay shows for Esc. -->
         <Style x:Key="KeyCap" TargetType="Border">
-            <Setter Property="Background" Value="#1A1D2D" />
-            <Setter Property="BorderBrush" Value="#3B4060" />
-            <Setter Property="BorderThickness" Value="1,1,1,2" />
+            <Setter Property="Background" Value="{DynamicResource Brush.KeyCap}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.KeyCapBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="6" />
-            <Setter Property="Padding" Value="8,2" />
-            <Setter Property="Margin" Value="0,0,5,0" />
+            <Setter Property="MinWidth" Value="26" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Padding" Value="7,0" />
+            <Setter Property="Margin" Value="5,0,0,0" />
         </Style>
         <Style x:Key="KeyText" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#D6D8E4" />
-            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.KeyCapText}" />
+            <Setter Property="FontSize" Value="11" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,0,1" />
+        </Style>
+        <Style x:Key="HotkeyLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- A thin scroll bar for displays the window does not fit. -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="10" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Track x:Name="PART_Track" IsDirectionReversed="True" Width="10">
+                            <Track.Thumb>
+                                <Thumb>
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType="Thumb">
+                                            <Border Margin="3,2" CornerRadius="2" Background="{DynamicResource Brush.FieldBorderHover}" />
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
+                            </Track.Thumb>
+                        </Track>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="22,20,22,16">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+        <StackPanel Margin="20,14,20,16">
             <!-- Header -->
-            <Grid Margin="0,0,0,16">
+            <Grid Margin="2,0,2,13">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Image Width="44"
-                       Height="44"
-                       Source="pack://application:,,,/VoiceInput.ico"
+                <Image x:Name="HeaderIcon"
+                       Width="36"
+                       Height="36"
                        RenderOptions.BitmapScalingMode="HighQuality" />
-                <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="Voice Input" FontSize="19" FontWeight="SemiBold" />
-                    <TextBlock Style="{StaticResource Hint}" Text="Говорите, текст появится там, где стоит курсор" />
+                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Voice Input" FontSize="16" FontWeight="SemiBold" />
+                        <TextBlock x:Name="VersionText"
+                                   Margin="8,0,0,1"
+                                   VerticalAlignment="Bottom"
+                                   Foreground="{DynamicResource Brush.TextFaint}"
+                                   FontSize="12" />
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource Hint}" Text="Говорите — текст появится там, где стоит курсор" />
                 </StackPanel>
-                <Border Grid.Column="2"
-                        VerticalAlignment="Center"
-                        Padding="9,3"
-                        CornerRadius="10"
-                        Background="#1A1D2D"
-                        BorderBrush="#2E3350"
-                        BorderThickness="1">
-                    <TextBlock x:Name="VersionText" Foreground="{StaticResource Muted}" FontSize="11.5" />
-                </Border>
             </Grid>
 
             <!-- Recognition -->
+            <TextBlock Style="{StaticResource SectionCaption}" Text="Распознавание" />
             <Border Style="{StaticResource Card}">
                 <StackPanel>
-                    <TextBlock Style="{StaticResource SectionTitle}" Text="Речь и звук" />
-                    <TextBlock x:Name="EngineIntro"
-                               Style="{StaticResource Hint}"
-                               Margin="0,3,0,10"
-                               Text="Выберите, где речь превращается в текст. Переключение действует сразу." />
-                    <RadioButton x:Name="OpenAiRadio" GroupName="Engine" Style="{StaticResource EngineCard}">
-                        <StackPanel>
-                            <TextBlock Text="OpenAI, через интернет" FontWeight="SemiBold" />
-                            <TextBlock Style="{StaticResource Hint}"
-                                       Margin="0,2,0,0"
-                                       Text="Быстро и точно. Запись отправляется в OpenAI по вашему API-ключу, платит владелец ключа." />
+                    <StackPanel x:Name="EnginePanel" Margin="14,12,14,12">
+                        <Border Padding="3" CornerRadius="8" Background="{DynamicResource Brush.Field}" BorderBrush="{DynamicResource Brush.FieldBorder}" BorderThickness="1">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <RadioButton x:Name="OpenAiRadio" GroupName="Engine" Style="{StaticResource Segment}" Content="OpenAI, через интернет" />
+                                <RadioButton x:Name="LocalRadio" Grid.Column="1" GroupName="Engine" Style="{StaticResource Segment}" Content="На этом компьютере (GigaAM)" />
+                            </Grid>
+                        </Border>
+                        <TextBlock x:Name="EngineIntro" Style="{StaticResource Hint}" Margin="0,8,0,0" />
+                    </StackPanel>
+                    <Border x:Name="EngineDivider" Style="{StaticResource RowDivider}" />
+
+                    <Grid Margin="14,0" MinHeight="50">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="236" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="LanguageLabel" VerticalAlignment="Center" Text="Язык речи" />
+                        <ComboBox x:Name="LanguageBox" Grid.Column="1" AutomationProperties.LabeledBy="{Binding ElementName=LanguageLabel}" />
+                    </Grid>
+                    <Border Style="{StaticResource RowDivider}" />
+                    <Grid Margin="14,0" MinHeight="54">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="236" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                            <TextBlock x:Name="MicrophoneLabel" Text="Микрофон" />
+                            <TextBlock Style="{StaticResource Hint}" Text="Со следующей записи" />
                         </StackPanel>
-                    </RadioButton>
-                    <RadioButton x:Name="LocalRadio" GroupName="Engine" Style="{StaticResource EngineCard}">
-                        <StackPanel>
-                            <TextBlock Text="На этом компьютере (GigaAM)" FontWeight="SemiBold" />
-                            <TextBlock Style="{StaticResource Hint}"
-                                       Margin="0,2,0,0"
-                                       Text="Без интернета и без ключа, запись не покидает компьютер. При первом включении загружается модель." />
-                        </StackPanel>
-                    </RadioButton>
-                    <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,6" Text="Язык речи" />
-                    <ComboBox x:Name="LanguageBox" Height="36" />
-                    <TextBlock Style="{StaticResource Hint}" Margin="0,12,0,6" Text="Микрофон (применяется со следующей записи)" />
-                    <ComboBox x:Name="MicrophoneBox" Height="36" />
+                        <ComboBox x:Name="MicrophoneBox" Grid.Column="1" AutomationProperties.LabeledBy="{Binding ElementName=MicrophoneLabel}" />
+                    </Grid>
                 </StackPanel>
             </Border>
 
             <!-- API key -->
-            <Border x:Name="KeyCard" Style="{StaticResource Card}">
-                <StackPanel>
-                    <Grid>
-                        <TextBlock Style="{StaticResource SectionTitle}" Text="API-ключ OpenAI" />
-                        <Border x:Name="KeyChip"
-                                HorizontalAlignment="Right"
-                                Padding="9,2"
-                                CornerRadius="10"
-                                Background="#143025">
-                            <StackPanel Orientation="Horizontal">
-                                <Ellipse x:Name="KeyChipDot" Width="7" Height="7" Fill="#69D6A4" VerticalAlignment="Center" />
-                                <TextBlock x:Name="KeyChipText"
-                                           Margin="6,0,0,0"
-                                           FontSize="11.5"
-                                           Foreground="#9DE6C4"
-                                           Text="Ключ сохранён" />
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-                    <TextBlock x:Name="KeyState" Style="{StaticResource Hint}" Margin="0,5,0,10" />
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <PasswordBox x:Name="KeyBox"
-                                     Height="36"
-                                     Padding="12,7"
-                                     VerticalContentAlignment="Center"
-                                     Background="{StaticResource Field}"
-                                     Foreground="#FAFAFC"
-                                     CaretBrush="#FAFAFC"
-                                     BorderBrush="{StaticResource FieldBorder}"
-                                     BorderThickness="1" />
-                        <Button x:Name="SaveKeyButton"
-                                Grid.Column="1"
-                                Height="36"
-                                Margin="8,0,0,0"
-                                Style="{StaticResource PrimaryButton}"
-                                Content="Сохранить" />
-                    </Grid>
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <Button x:Name="CheckKeyButton" Style="{StaticResource QuietButton}" Padding="12,5" Content="Проверить" />
-                        <Button x:Name="DeleteKeyButton" Margin="8,0,0,0" Style="{StaticResource QuietButton}" Padding="12,5" Content="Удалить ключ" />
+            <StackPanel x:Name="KeyCard">
+                <Grid>
+                    <TextBlock x:Name="KeyCaption" Style="{StaticResource SectionCaption}" Text="API-ключ OpenAI" />
+                    <Border x:Name="KeyChip"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Margin="0,0,0,6"
+                            Padding="8,1,9,2"
+                            CornerRadius="10">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="KeyChipDot" Width="6" Height="6" VerticalAlignment="Center" Margin="0,1,0,0" />
+                            <TextBlock x:Name="KeyChipText" Margin="6,0,0,0" FontSize="11.5" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+                <Border Style="{StaticResource Card}" Padding="14,11,14,12">
+                    <StackPanel>
+                        <TextBlock x:Name="KeyState" Style="{StaticResource Hint}" Margin="0,0,0,10" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <PasswordBox x:Name="KeyBox" AutomationProperties.LabeledBy="{Binding ElementName=KeyCaption}" />
+                            <TextBlock x:Name="KeyPlaceholder"
+                                       Margin="12,0,0,1"
+                                       VerticalAlignment="Center"
+                                       IsHitTestVisible="False"
+                                       Foreground="{DynamicResource Brush.TextFaint}"
+                                       Text="sk-…" />
+                            <Button x:Name="SaveKeyButton"
+                                    Grid.Column="1"
+                                    Margin="8,0,0,0"
+                                    Style="{StaticResource PrimaryButton}"
+                                    Content="Сохранить" />
+                        </Grid>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="CheckKeyButton" Style="{StaticResource SecondaryButton}" Height="30" Padding="12,0" Content="Проверить" />
+                            <Button x:Name="DeleteKeyButton" Grid.Column="1" Margin="8,0,0,0" Style="{StaticResource SecondaryButton}" Height="30" Padding="12,0" Content="Удалить ключ" />
+                            <TextBlock x:Name="KeyResult"
+                                       Grid.Column="2"
+                                       Style="{StaticResource Hint}"
+                                       Margin="12,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Visibility="Collapsed" />
+                        </Grid>
                     </StackPanel>
-                    <TextBlock x:Name="KeyResult" Style="{StaticResource Hint}" Margin="0,8,0,0" Visibility="Collapsed" />
-                    <TextBlock Style="{StaticResource Hint}"
-                               Margin="0,6,0,0"
-                               Foreground="{StaticResource Faint}"
-                               Text="Ключ хранится зашифрованным и доступен только вашей учётной записи Windows на этом компьютере." />
-                </StackPanel>
-            </Border>
+                </Border>
+            </StackPanel>
 
             <!-- Hotkeys and startup -->
+            <TextBlock Style="{StaticResource SectionCaption}" Text="Клавиши и запуск" />
             <Border Style="{StaticResource Card}">
                 <StackPanel>
-                    <TextBlock Style="{StaticResource SectionTitle}" Text="Горячие клавиши" />
-                    <Grid Margin="0,10,0,0">
+                    <Grid Margin="14,8,14,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="26" />
+                            <RowDefinition Height="26" />
+                            <RowDefinition Height="26" />
                         </Grid.RowDefinitions>
-                        <TextBlock Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="0,0,0,8" Text="Удерживать для записи" />
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Style="{StaticResource HotkeyLabel}" Text="Удерживать для записи" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                             <Border Style="{StaticResource KeyCap}"><TextBlock Style="{StaticResource KeyText}" Text="Ctrl" /></Border>
                             <Border Style="{StaticResource KeyCap}"><TextBlock Style="{StaticResource KeyText}" Text="Shift" /></Border>
-                            <Border Style="{StaticResource KeyCap}" Margin="0"><TextBlock Style="{StaticResource KeyText}" Text="Space" /></Border>
+                            <Border Style="{StaticResource KeyCap}"><TextBlock Style="{StaticResource KeyText}" Text="Space" /></Border>
                         </StackPanel>
-                        <TextBlock Grid.Row="1" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="0,0,0,8" Text="Начать и закончить без удержания" />
-                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Grid.Row="1" Style="{StaticResource HotkeyLabel}" Text="Начать и закончить без удержания" />
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                             <Border Style="{StaticResource KeyCap}"><TextBlock Style="{StaticResource KeyText}" Text="Ctrl" /></Border>
                             <Border Style="{StaticResource KeyCap}"><TextBlock Style="{StaticResource KeyText}" Text="Shift" /></Border>
-                            <Border Style="{StaticResource KeyCap}" Margin="0"><TextBlock Style="{StaticResource KeyText}" Text="K" /></Border>
+                            <Border Style="{StaticResource KeyCap}"><TextBlock Style="{StaticResource KeyText}" Text="K" /></Border>
                         </StackPanel>
-                        <TextBlock Grid.Row="2" Style="{StaticResource Hint}" VerticalAlignment="Center" Text="Отменить диктовку" />
-                        <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal">
-                            <Border Style="{StaticResource KeyCap}" Margin="0"><TextBlock Style="{StaticResource KeyText}" Text="Esc" /></Border>
+                        <TextBlock Grid.Row="2" Style="{StaticResource HotkeyLabel}" Text="Отменить диктовку" />
+                        <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <Border Style="{StaticResource KeyCap}"><TextBlock Style="{StaticResource KeyText}" Text="Esc" /></Border>
                         </StackPanel>
                     </Grid>
-                    <Border Height="1" Margin="0,14,0,12" Background="{StaticResource CardBorder}" />
-                    <CheckBox x:Name="AutostartBox" Content="Запускать вместе с Windows" />
+                    <Border Style="{StaticResource RowDivider}" />
+                    <CheckBox x:Name="AutostartBox" Style="{StaticResource SwitchRow}" Content="Запускать вместе с Windows" />
                 </StackPanel>
             </Border>
 
             <TextBlock x:Name="Message"
-                       Margin="2,0,0,6"
-                       MinHeight="18"
+                       Margin="2,-4,2,8"
                        TextWrapping="Wrap"
-                       Foreground="{StaticResource Accent}" />
+                       FontSize="12"
+                       Foreground="{DynamicResource Brush.TextMuted}"
+                       Visibility="Collapsed" />
 
-            <Grid Margin="2,4,0,0">
+            <Grid Margin="0,0,0,0">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="SiteButton" Style="{StaticResource LinkButton}" Content="GitHub" />
-                    <Button x:Name="IssueButton" Margin="16,0,0,0" Style="{StaticResource LinkButton}" Content="Сообщить о проблеме" />
+                    <Button x:Name="IssueButton" Margin="12,0,0,0" Style="{StaticResource LinkButton}" Content="Сообщить о проблеме" />
                 </StackPanel>
                 <Button x:Name="CloseButton"
                         HorizontalAlignment="Right"
-                        Style="{StaticResource QuietButton}"
+                        MinWidth="88"
+                        Style="{StaticResource SecondaryButton}"
                         IsDefault="True"
+                        IsCancel="True"
                         Content="Готово" />
             </Grid>
         </StackPanel>
