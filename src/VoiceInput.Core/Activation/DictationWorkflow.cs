@@ -88,31 +88,38 @@ public sealed class DictationWorkflow(
             {
                 State = DictationWorkflowState.Recording;
                 overlay.Show(ActivationVisualState.Listening);
-                await audioRecorder.StartAsync(session.Token);
+                await audioRecorder.StartAsync(session.Token).ConfigureAwait(false);
                 recordingStarted = true;
 
-                await WaitForReleaseOrCaptureEndAsync(sessionReleaseGate, session);
-                var audio = await audioRecorder.StopAsync(session.Token);
+                await WaitForReleaseOrCaptureEndAsync(sessionReleaseGate, session).ConfigureAwait(false);
+                var phaseClock = System.Diagnostics.Stopwatch.StartNew();
+                var audio = await audioRecorder.StopAsync(session.Token).ConfigureAwait(false);
+                VoiceInput.Core.Diagnostics.EngineDiagnostics.WriteTiming("stop", phaseClock.Elapsed);
                 recordingStopped = true;
 
                 State = DictationWorkflowState.Processing;
                 overlay.Show(ActivationVisualState.Processing);
-                var text = (await transcriber.TranscribeAsync(audio, session.Token)).Trim();
+                VoiceInput.Core.Diagnostics.EngineDiagnostics.WriteTiming("stop-to-transcription-start", phaseClock.Elapsed);
+                var text = (await transcriber.TranscribeAsync(audio, session.Token).ConfigureAwait(false)).Trim();
+                VoiceInput.Core.Diagnostics.EngineDiagnostics.WriteTiming("stop-to-result", phaseClock.Elapsed);
+                var resultTime = phaseClock.Elapsed;
                 session.Token.ThrowIfCancellationRequested();
 
                 if (text.Length == 0)
                 {
                     overlay.Show(ActivationVisualState.NoSpeech);
-                    await delay.DelayAsync(TimeSpan.FromMilliseconds(650), session.Token);
+                    await delay.DelayAsync(TimeSpan.FromMilliseconds(650), session.Token).ConfigureAwait(false);
                     return true;
                 }
 
                 State = DictationWorkflowState.Inserting;
                 overlay.Show(ActivationVisualState.Inserting);
-                await textInserter.InsertAsync(target, text, session.Token);
+                await textInserter.InsertAsync(target, text, session.Token).ConfigureAwait(false);
+                VoiceInput.Core.Diagnostics.EngineDiagnostics.WriteTiming("result-to-paste", phaseClock.Elapsed - resultTime);
+                VoiceInput.Core.Diagnostics.EngineDiagnostics.WriteTiming("stop-to-paste", phaseClock.Elapsed);
 
                 overlay.Show(ActivationVisualState.Success);
-                await delay.DelayAsync(TimeSpan.FromMilliseconds(350), session.Token);
+                await delay.DelayAsync(TimeSpan.FromMilliseconds(350), session.Token).ConfigureAwait(false);
                 return true;
             }
             finally
@@ -121,7 +128,7 @@ public sealed class DictationWorkflow(
                 {
                     if (recordingStarted && !recordingStopped)
                     {
-                        await audioRecorder.CancelAsync();
+                        await audioRecorder.CancelAsync().ConfigureAwait(false);
                     }
                 }
                 catch (Exception)

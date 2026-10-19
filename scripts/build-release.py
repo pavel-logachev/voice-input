@@ -11,6 +11,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import tarfile
 
 RUNTIME_SHA256 = "9f536cb0fb839bd305e6d92fb214fd417c7718a416a6c7646a9911fbd56fdad5"
 MODEL_SHA256 = "7d69952fb431a8d7800ed9910dc61fea37d8406bfe96d10bf24c8bd4b7c68623"
@@ -60,7 +61,7 @@ def require_icon_sizes(path: Path) -> None:
 
 def run(command: list[str], cwd: Path) -> None:
     print("+", subprocess.list2cmdline(command), flush=True)
-    subprocess.run(command, cwd=cwd, check=True)
+    subprocess.run(command, cwd=cwd, check=True, timeout=900)
 
 
 def find_iscc() -> Path:
@@ -89,9 +90,7 @@ def publish(project: Path, output: Path, dotnet: Path, root: Path) -> None:
             "true",
             "--output",
             str(output),
-            "-p:PublishSingleFile=true",
-            "-p:IncludeNativeLibrariesForSelfExtract=true",
-            "-p:EnableCompressionInSingleFile=true",
+            "-p:PublishSingleFile=false",
             "-p:DebugType=None",
             "-p:DebugSymbols=false",
         ],
@@ -112,11 +111,9 @@ def main() -> int:
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description="Build the self-contained Voice Input Windows installer.")
     parser.add_argument("--version", default=project_version(root))
-    parser.add_argument(
-        "--with-local",
-        action="store_true",
-        help="Also bundle the optional local (GigaAM) engine: worker, runtime archive and model (about 300 MB).",
-    )
+    parser.add_argument("--output-dir", type=Path, default=root / "artifacts")
+    parser.add_argument("--runtime-archive", type=Path,
+                        default=root / ".local" / "runtime" / "transcribe-native-0.1.3-windows-x86_64-cpu-vulkan.tar.gz")
     args = parser.parse_args()
     if args.version != project_version(root):
         raise RuntimeError(
@@ -132,14 +129,10 @@ def main() -> int:
     print("Verifying release assets...", flush=True)
     require_icon_sizes(icon_file)
 
-    runtime_archive = model_file = None
-    if args.with_local:
-        runtime_archive = root / ".local" / "runtime" / "transcribe-native-0.1.3-windows-x86_64-cpu-vulkan.tar.gz"
-        model_file = root / ".local" / "models" / "gigaam-v3-e2e-rnnt-Q4_K_M.gguf"
-        require_sha256(runtime_archive, RUNTIME_SHA256)
-        require_sha256(model_file, MODEL_SHA256)
+    runtime_archive = args.runtime_archive.resolve()
+    require_sha256(runtime_archive, RUNTIME_SHA256)
 
-    artifacts = root / "artifacts"
+    artifacts = args.output_dir.resolve()
     app_publish = artifacts / "publish" / "win-x64"
     worker_publish = artifacts / "publish" / "worker-win-x64"
     installer_output = artifacts / "installer"
@@ -153,23 +146,27 @@ def main() -> int:
     if not app_executable.is_file():
         raise RuntimeError("Self-contained application executable is missing after publish.")
 
-    # A source build copies the worker next to the application; an ordinary installer ships without it.
+    # Every installer ships the isolated engine and pinned native runtime, never the model.
     app_worker = app_publish / "worker"
     if app_worker.exists():
         shutil.rmtree(app_worker)
-    worker_executable = None
-    if args.with_local:
-        publish(root / "src" / "VoiceInput.Asr.Worker" / "VoiceInput.Asr.Worker.csproj", worker_publish, dotnet, root)
-        app_worker.mkdir()
-        for source in worker_publish.iterdir():
-            destination = app_worker / source.name
-            if source.is_dir():
-                shutil.copytree(source, destination)
-            else:
-                shutil.copy2(source, destination)
-        worker_executable = app_worker / "VoiceInput.Asr.Worker.exe"
-        if not worker_executable.is_file():
-            raise RuntimeError("The local ASR worker executable is missing after publish.")
+    publish(root / "src" / "VoiceInput.Asr.Worker" / "VoiceInput.Asr.Worker.csproj", worker_publish, dotnet, root)
+    # WindowsDesktop supplies CoreCLR plus the managed framework superset. Its assemblies can differ
+    # from NETCore's (e.g. VisualBasic), so retain the app's framework and copy only worker-owned files.
+    app_config = json.loads((app_publish / "VoiceInput.App.runtimeconfig.json").read_text(encoding="utf-8"))["runtimeOptions"]
+    worker_config = json.loads((worker_publish / "VoiceInput.Asr.Worker.runtimeconfig.json").read_text(encoding="utf-8"))["runtimeOptions"]
+    app_frameworks = {f["name"]: f["version"] for f in app_config["includedFrameworks"]}
+    for framework in worker_config["includedFrameworks"]:
+        if app_frameworks.get(framework["name"]) != framework["version"]:
+            raise RuntimeError("App and worker must use the same app-local runtime version.")
+    for source in worker_publish.glob("VoiceInput.Asr.Worker.*"):
+        shutil.copy2(source, app_publish / source.name)
+    require_sha256(app_publish / "VoiceInput.Core.dll", sha256(worker_publish / "VoiceInput.Core.dll"))
+    worker_executable = app_publish / "VoiceInput.Asr.Worker.exe"
+    if not worker_executable.is_file():
+        raise RuntimeError("The local ASR worker executable is missing after publish.")
+    with tarfile.open(runtime_archive, "r:gz") as archive:
+        archive.extractall(app_publish / "runtime", filter="data")
 
     iscc = find_iscc()
     installer_name = f"VoiceInput-Setup-{args.version}"
@@ -181,8 +178,6 @@ def main() -> int:
         f"/DAppVersion={args.version}",
         f"/DPublishDir={app_publish}",
     ]
-    if args.with_local:
-        command += [f"/DRuntimeArchive={runtime_archive}", f"/DModelFile={model_file}"]
     command.append(str(root / "installer" / "VoiceInput.iss"))
     run(command, root)
 
@@ -192,7 +187,7 @@ def main() -> int:
 
     manifest = {
         "version": args.version,
-        "engines": ["openai", "local"] if args.with_local else ["openai"],
+        "engines": ["openai", "local", "custom-openai-compatible"],
         "icon": {
             "file": str(icon_file.relative_to(root)),
             "sizes": sorted(REQUIRED_ICON_SIZES),
@@ -209,14 +204,16 @@ def main() -> int:
             "sha256": sha256(setup),
         },
     }
-    if args.with_local:
-        manifest["runtime"] = {"file": runtime_archive.name, "sha256": RUNTIME_SHA256}
-        manifest["model"] = {"file": model_file.name, "sha256": MODEL_SHA256}
-        manifest["worker"] = {
-            "file": f"worker/{worker_executable.name}",
-            "size": worker_executable.stat().st_size,
-            "sha256": sha256(worker_executable),
-        }
+    manifest["runtime"] = {"file": runtime_archive.name, "sha256": RUNTIME_SHA256,
+                           "archive_size": runtime_archive.stat().st_size,
+                           "extracted_size": sum(p.stat().st_size for p in (app_publish / "runtime").rglob("*") if p.is_file())}
+    manifest["model"] = {"delivery": "on-demand", "sha256": MODEL_SHA256}
+    manifest["worker"] = {
+        "file": worker_executable.name,
+        "deployment": "shared-app-local-runtime",
+        "size": worker_executable.stat().st_size,
+        "sha256": sha256(worker_executable),
+    }
     manifest_path = installer_output / f"VoiceInput-Setup-{args.version}.manifest.json"
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 

@@ -23,17 +23,68 @@ public sealed class RecordingLevelMeter : FrameworkElement
     private SolidColorBrush idleBrush = Theme.Brush(Colors.Gray);
     private SolidColorBrush cursorBrush = Theme.Brush(Colors.White);
     private SolidColorBrush[] barBrushes = [];
+    private float latestLevel;
+    private bool recording;
+    private bool subscribed;
+    private TimeSpan? previousFrame;
 
     public RecordingLevelMeter()
     {
         IsHitTestVisible = false;
         SnapsToDevicePixels = true;
+        ClipToBounds = true;
+        IsVisibleChanged += (_, _) => UpdateSubscription();
+        Unloaded += (_, _) => StopRendering();
+        Loaded += (_, _) => UpdateSubscription();
     }
 
-    public void SetLevel(float level)
+    // Called from the capture thread. No dispatcher work and no access to WPF properties here.
+    public void SetLevel(float level) => Volatile.Write(ref latestLevel, level);
+
+    // A deterministic still preview has no rendering clock between its synthetic samples.
+    internal void AdvancePreview(float level, TimeSpan elapsed)
     {
-        history.Push(level);
+        history.Advance(level, elapsed);
         InvalidateVisual();
+    }
+
+    public void SetRecording(bool active)
+    {
+        recording = active;
+        UpdateSubscription();
+    }
+
+    private void UpdateSubscription()
+    {
+        if (!recording || !IsVisible)
+        {
+            StopRendering();
+            return;
+        }
+
+        if (subscribed) return;
+        previousFrame = null;
+        CompositionTarget.Rendering += OnRendering;
+        subscribed = true;
+    }
+
+    private void StopRendering()
+    {
+        if (subscribed) CompositionTarget.Rendering -= OnRendering;
+        subscribed = false;
+        previousFrame = null;
+    }
+
+    private void OnRendering(object? sender, EventArgs e)
+    {
+        var now = ((RenderingEventArgs)e).RenderingTime;
+        if (previousFrame == now) return;
+        if (previousFrame is { } previous)
+        {
+            history.Advance(Volatile.Read(ref latestLevel), now - previous);
+            InvalidateVisual();
+        }
+        previousFrame = now;
     }
 
     /// <param name="colours">The wave, oldest sound first; the last colour is the cursor. One colour draws plain bars.</param>
@@ -51,6 +102,8 @@ public sealed class RecordingLevelMeter : FrameworkElement
 
     public void Reset()
     {
+        Volatile.Write(ref latestLevel, 0);
+        previousFrame = null;
         history.Reset();
         InvalidateVisual();
     }
@@ -70,7 +123,9 @@ public sealed class RecordingLevelMeter : FrameworkElement
 
         var gradient = wave.Count > 2;
         var barsWidth = gradient ? ActualWidth - BarWidth - CursorGap : ActualWidth;
+        drawingContext.PushClip(new RectangleGeometry(new Rect(0, 0, Math.Max(0, barsWidth), ActualHeight)));
         RenderBars(drawingContext, barsWidth, gradient);
+        drawingContext.Pop();
         if (!gradient)
         {
             return;
@@ -96,7 +151,7 @@ public sealed class RecordingLevelMeter : FrameworkElement
         var radius = BarWidth / 2;
         if (barBrushes.Length != count)
         {
-            // The meter redraws on every audio block: the colours of the bars are worked out once per width.
+            // Colours are worked out once per width, not once per animation frame.
             barBrushes = new SolidColorBrush[count];
             for (var index = 0; index < count; index++)
             {
@@ -104,12 +159,12 @@ public sealed class RecordingLevelMeter : FrameworkElement
             }
         }
 
-        for (var index = 0; index < count; index++)
+        for (var index = 0; index <= count; index++)
         {
-            var position = Position(index, count);
-            var left = index * step;
-            var level = levels[levels.Length - count + index];
-            var colour = barBrushes[index];
+            var position = Math.Min(1, Position(index, count));
+            var left = (index - history.ScrollFraction) * step;
+            var level = index < count ? levels[levels.Length - count + index] : history.CurrentLevel;
+            var colour = barBrushes[Math.Min(index, count - 1)];
 
             // Every slot keeps a small idle mark, so the meter reads as a wave even in silence.
             if (level <= 0)

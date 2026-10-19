@@ -26,7 +26,7 @@ public sealed class PcmFixtureAudioRecorder(string fixturePath) : IAudioRecorder
         }
 
         active = false;
-        var bytes = await File.ReadAllBytesAsync(Path.GetFullPath(fixturePath), cancellationToken);
+        var bytes = await File.ReadAllBytesAsync(Path.GetFullPath(fixturePath), cancellationToken).ConfigureAwait(false);
         if (bytes.Length == 0 || bytes.Length % sizeof(float) != 0)
         {
             throw new InvalidDataException("VOICE_INPUT_PCM_FIXTURE must point to non-empty 16 kHz mono float32 PCM.");

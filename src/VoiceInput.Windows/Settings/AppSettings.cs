@@ -10,11 +10,25 @@ public enum TranscriptionEngine
 
     /// <summary>Recognition runs on this computer (GigaAM); audio never leaves it.</summary>
     Local,
+
+    CustomOpenAiCompatible,
+}
+
+public enum LocalModelVariant
+{
+    GigaAmV3E2eRnntQ4,
 }
 
 public sealed record AppSettings
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
+
+    public string? CustomBaseUrl { get; init; }
+
+    public string? CustomModel { get; init; }
+
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public LocalModelVariant LocalModel { get; init; } = LocalModelVariant.GigaAmV3E2eRnntQ4;
 
     public int Version { get; init; } = CurrentVersion;
 
@@ -93,6 +107,9 @@ public sealed class SettingsStore(string? path = null)
         {
             Version = AppSettings.CurrentVersion,
             Engine = Enum.IsDefined(settings.Engine) ? settings.Engine : TranscriptionEngine.OpenAi,
+            CustomBaseUrl = string.IsNullOrWhiteSpace(settings.CustomBaseUrl) ? null : settings.CustomBaseUrl.Trim(),
+            CustomModel = string.IsNullOrWhiteSpace(settings.CustomModel) ? null : settings.CustomModel.Trim(),
+            LocalModel = Enum.IsDefined(settings.LocalModel) ? settings.LocalModel : LocalModelVariant.GigaAmV3E2eRnntQ4,
             Language = language is { Length: 2 or 3 } ? language : null,
             MicrophoneId = string.IsNullOrWhiteSpace(settings.MicrophoneId) ? null : settings.MicrophoneId.Trim(),
         };

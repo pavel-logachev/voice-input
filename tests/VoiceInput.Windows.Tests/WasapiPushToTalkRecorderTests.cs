@@ -25,6 +25,38 @@ public sealed class WasapiPushToTalkRecorderTests
     }
 
     [Fact]
+    public async Task MultipleChunksPreserveOrderAndOnlyRecordedBytes()
+    {
+        var session = new FakeSession();
+        using var recorder = new WasapiPushToTalkRecorder(() => session);
+        await recorder.StartAsync(CancellationToken.None);
+        session.Push(Pcm16(0.25f, 731));
+        session.Push(Pcm16(-0.5f, 17003));
+        var audio = await recorder.StopAsync(CancellationToken.None);
+        Assert.Equal(17734, audio.Samples.Length);
+        Assert.All(audio.Samples[..731], value => Assert.Equal(0.25f, value, 3));
+        Assert.All(audio.Samples[731..], value => Assert.Equal(-0.5f, value, 3));
+        Assert.Equal(16000, audio.SampleRate);
+    }
+
+    [Fact]
+    public async Task Stereo48KhzStillConvertsToMono16Khz()
+    {
+        var session = new FakeSession { WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(48000, 2) };
+        using var recorder = new WasapiPushToTalkRecorder(() => session);
+        await recorder.StartAsync(CancellationToken.None);
+        var samples = new float[48000 * 2];
+        for (var i = 0; i < samples.Length; i += 2) { samples[i] = 0.25f; samples[i + 1] = 0.75f; }
+        var bytes = new byte[samples.Length * sizeof(float)];
+        Buffer.BlockCopy(samples, 0, bytes, 0, bytes.Length);
+        session.Push(bytes);
+        var audio = await recorder.StopAsync(CancellationToken.None);
+        Assert.Equal(16000, audio.SampleRate);
+        Assert.InRange(audio.Samples.Length, 15900, 16100);
+        Assert.Equal(0.5f, audio.Samples[8000], 2);
+    }
+
+    [Fact]
     public async Task StartingTwiceIsRefused()
     {
         using var recorder = new WasapiPushToTalkRecorder(() => new FakeSession());
@@ -206,6 +238,39 @@ public sealed class WasapiPushToTalkRecorderTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => recorder.StartAsync(CancellationToken.None).AsTask());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DisposeDoesNotWaitForBlockedStartupAndLateDeviceIsDisposedExactlyOnce(bool blockFactory)
+    {
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var session = new FakeSession { StartEntered = blockFactory ? null : entered, StartGate = blockFactory ? null : release };
+        var recorder = new WasapiPushToTalkRecorder(() =>
+        {
+            if (blockFactory) { entered.Set(); release.Wait(); }
+            return session;
+        });
+        var start = recorder.StartAsync(CancellationToken.None).AsTask();
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(3)));
+        var disposal = Task.Run(recorder.Dispose);
+        try
+        {
+            await disposal.WaitAsync(TimeSpan.FromMilliseconds(2500));
+            Assert.False(session.Disposed);
+        }
+        finally
+        {
+            release.Set();
+            await start.WaitAsync(TimeSpan.FromSeconds(3));
+            await disposal.WaitAsync(TimeSpan.FromSeconds(3));
+        }
+        await WaitUntilAsync(() => session.Disposed);
+        recorder.Dispose();
+        Assert.Equal(1, session.DisposeCalls);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => recorder.StartAsync(CancellationToken.None).AsTask());
+    }
+
     private static byte[] Pcm16(float value, int samples)
     {
         var bytes = new byte[samples * 2];
@@ -233,11 +298,14 @@ public sealed class WasapiPushToTalkRecorderTests
     {
         private int stopCalls;
 
-        public WaveFormat WaveFormat => Format;
+        public WaveFormat WaveFormat { get; init; } = Format;
 
         public bool StopRaisesEvent { get; init; } = true;
 
         public bool StartFails { get; init; }
+        public ManualResetEventSlim? StartEntered { get; init; }
+        public ManualResetEventSlim? StartGate { get; init; }
+        public int DisposeCalls { get; private set; }
 
         public ManualResetEventSlim? DisposeGate { get; init; }
 
@@ -253,6 +321,8 @@ public sealed class WasapiPushToTalkRecorderTests
 
         public void StartRecording()
         {
+            StartEntered?.Set();
+            StartGate?.Wait();
             if (StartFails)
             {
                 throw new InvalidOperationException("microphone unavailable");
@@ -274,6 +344,7 @@ public sealed class WasapiPushToTalkRecorderTests
 
         public void Dispose()
         {
+            DisposeCalls++;
             DisposeStarted = true;
             DisposeGate?.Wait(TimeSpan.FromSeconds(10));
             Disposed = true;

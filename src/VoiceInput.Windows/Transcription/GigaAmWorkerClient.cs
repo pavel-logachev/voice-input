@@ -1,243 +1,152 @@
-using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.IO.Pipes;
-using System.Runtime.InteropServices;
+using VoiceInput.Core.Diagnostics;
 
 namespace VoiceInput.Windows.Transcription;
 
-public sealed class GigaAmWorkerClient : IAsrSegmentClient, IAsyncDisposable
+public interface IAsrWorkerConnection : IAsyncDisposable
 {
-    private const byte TranscribeCommand = 1;
-    private const byte ShutdownCommand = 2;
+    bool HasExited { get; }
+    Task StartAsync(CancellationToken cancellationToken);
+    ValueTask<string> TranscribeAsync(ReadOnlyMemory<float> samples, int sampleRate, CancellationToken cancellationToken);
+}
 
-    private readonly string workerExecutable;
-    private readonly string runtimeDirectory;
-    private readonly string modelPath;
+public sealed record WorkerRecoveryOptions
+{
+    public int MaximumRestarts { get; init; } = 3;
+    public TimeSpan Backoff { get; init; } = TimeSpan.FromSeconds(1);
+    public TimeSpan StartupTimeout { get; init; } = TimeSpan.FromSeconds(30);
+    public TimeSpan MinimumRequestTimeout { get; init; } = TimeSpan.FromSeconds(15);
+    public double TimeoutPerAudioSecond { get; init; } = 3;
+}
+
+public enum WorkerState { Stopped, Starting, Ready, Failed, RestartLimitReached }
+
+/// <summary>Serializes requests and invalidates the whole connection on cancellation, crash or deadline.
+/// A failed dictation is never replayed; recovery happens on the next request.</summary>
+public sealed class GigaAmWorkerClient : IAsrSegmentClient, IAsyncDisposable, IForceStop
+{
+    private readonly Func<IAsrWorkerConnection> connectionFactory;
+    private readonly WorkerRecoveryOptions options;
     private readonly SemaphoreSlim exchangeLock = new(1, 1);
-    private readonly ConcurrentQueue<string> workerLog = new();
-
-    private Process? process;
-    private NamedPipeClientStream? pipe;
-    private BinaryReader? reader;
-    private BinaryWriter? writer;
+    private IAsrWorkerConnection? connection;
+    private int failures;
     private bool disposed;
 
     public GigaAmWorkerClient(string workerExecutable, string runtimeDirectory, string modelPath)
+        : this(() => new NamedPipeWorkerConnection(workerExecutable, runtimeDirectory, modelPath)) { }
+
+    public GigaAmWorkerClient(Func<IAsrWorkerConnection> connectionFactory, WorkerRecoveryOptions? options = null)
     {
-        this.workerExecutable = Path.GetFullPath(workerExecutable);
-        this.runtimeDirectory = Path.GetFullPath(runtimeDirectory);
-        this.modelPath = Path.GetFullPath(modelPath);
+        this.connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+        this.options = options ?? new WorkerRecoveryOptions();
+        if (this.options.MaximumRestarts < 0 || this.options.Backoff < TimeSpan.Zero
+            || this.options.StartupTimeout <= TimeSpan.Zero || this.options.MinimumRequestTimeout <= TimeSpan.Zero
+            || this.options.TimeoutPerAudioSecond <= 0) throw new ArgumentOutOfRangeException(nameof(options));
     }
+
+    public WorkerState State { get; private set; }
+    public TranscriptionErrorCode? LastError { get; private set; }
+    public event EventHandler<WorkerState>? StateChanged;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
-        if (process is not null)
+        await exchangeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try { await EnsureStartedAsync(cancellationToken).ConfigureAwait(false); }
+        finally { exchangeLock.Release(); }
+    }
+
+    private async Task EnsureStartedAsync(CancellationToken cancellationToken)
+    {
+        if (connection is { HasExited: false }) return;
+        if (connection is not null)
         {
-            return;
+            await ResetAsync().ConfigureAwait(false);
+            failures++;
         }
-
-        if (!File.Exists(workerExecutable))
+        if (failures > options.MaximumRestarts)
         {
-            throw new FileNotFoundException("The Voice Input ASR worker was not found.", workerExecutable);
+            LastError = TranscriptionErrorCode.WorkerRestartLimit;
+            SetState(WorkerState.RestartLimitReached);
+            throw new TranscriptionException(LastError.Value, VoiceInputStrings.TranscriptionError(LastError.Value));
         }
-
-        if (!Directory.Exists(runtimeDirectory))
-        {
-            throw new DirectoryNotFoundException($"The transcribe.cpp runtime directory was not found: {runtimeDirectory}");
-        }
-
-        if (!File.Exists(modelPath))
-        {
-            throw new FileNotFoundException("The GigaAM model was not found.", modelPath);
-        }
-
-        var pipeName = $"VoiceInput.Asr.{Guid.NewGuid():N}";
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = workerExecutable,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-        };
-        startInfo.ArgumentList.Add("--pipe");
-        startInfo.ArgumentList.Add(pipeName);
-        startInfo.ArgumentList.Add("--runtime");
-        startInfo.ArgumentList.Add(runtimeDirectory);
-        startInfo.ArgumentList.Add("--model");
-        startInfo.ArgumentList.Add(modelPath);
-
-        var workerProcess = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-        workerProcess.ErrorDataReceived += OnWorkerLog;
-        workerProcess.OutputDataReceived += OnWorkerLog;
-
-        if (!workerProcess.Start())
-        {
-            workerProcess.Dispose();
-            throw new InvalidOperationException("The Voice Input ASR worker did not start.");
-        }
-
-        workerProcess.BeginErrorReadLine();
-        workerProcess.BeginOutputReadLine();
-
-        var nextPipe = new NamedPipeClientStream(
-            ".",
-            pipeName,
-            PipeDirection.InOut,
-            PipeOptions.Asynchronous);
-
+        if (failures > 0) await Task.Delay(options.Backoff * failures, cancellationToken).ConfigureAwait(false);
+        SetState(WorkerState.Starting);
+        connection = connectionFactory();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(options.StartupTimeout);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            await nextPipe.ConnectAsync(15_000, cancellationToken);
+            await connection.StartAsync(deadline.Token).WaitAsync(deadline.Token).ConfigureAwait(false);
+            EngineDiagnostics.WriteTiming("model-load", watch.Elapsed);
+            LastError = null;
+            SetState(WorkerState.Ready);
         }
         catch (Exception exception)
         {
-            nextPipe.Dispose();
-            if (!workerProcess.HasExited)
-            {
-                workerProcess.Kill(entireProcessTree: true);
-            }
-
-            await workerProcess.WaitForExitAsync(CancellationToken.None);
-            workerProcess.Dispose();
-            if (exception is OperationCanceledException && cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-
-            throw new InvalidOperationException(
-                $"Could not connect to the ASR worker. {GetWorkerLog()}",
-                exception);
+            await ResetAsync().ConfigureAwait(false);
+            if (cancellationToken.IsCancellationRequested) SetState(WorkerState.Stopped);
+            cancellationToken.ThrowIfCancellationRequested();
+            failures++;
+            LastError = exception is OperationCanceledException ? TranscriptionErrorCode.WorkerTimeout : TranscriptionErrorCode.WorkerExited;
+            SetState(WorkerState.Failed);
+            throw new TranscriptionException(LastError.Value, VoiceInputStrings.TranscriptionError(LastError.Value), exception);
         }
-
-        process = workerProcess;
-        pipe = nextPipe;
-        reader = new BinaryReader(nextPipe, System.Text.Encoding.UTF8, leaveOpen: true);
-        writer = new BinaryWriter(nextPipe, System.Text.Encoding.UTF8, leaveOpen: true);
     }
 
-    public async ValueTask<string> TranscribeSegmentAsync(
-        ReadOnlyMemory<float> samples,
-        int sampleRate,
-        CancellationToken cancellationToken)
+    public async ValueTask<string> TranscribeSegmentAsync(ReadOnlyMemory<float> samples, int sampleRate, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
-        cancellationToken.ThrowIfCancellationRequested();
-        await exchangeLock.WaitAsync(cancellationToken);
+        if (sampleRate != 16000 || samples.Length is <= 0 or > 400000) throw new ArgumentOutOfRangeException(nameof(samples));
+        await exchangeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return await Task.Run(() => Exchange(samples, sampleRate));
+            await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(options.MinimumRequestTimeout + TimeSpan.FromSeconds(samples.Length / (double)sampleRate * options.TimeoutPerAudioSecond));
+            try
+            {
+                var text = await connection!.TranscribeAsync(samples, sampleRate, deadline.Token).AsTask().WaitAsync(deadline.Token).ConfigureAwait(false);
+                failures = 0;
+                LastError = null;
+                return text;
+            }
+            catch (Exception exception)
+            {
+                await ResetAsync().ConfigureAwait(false);
+                if (cancellationToken.IsCancellationRequested)
+                { SetState(WorkerState.Stopped); throw new OperationCanceledException(cancellationToken); }
+                failures++;
+                LastError = exception is OperationCanceledException ? TranscriptionErrorCode.WorkerTimeout
+                    : exception is InvalidDataException ? TranscriptionErrorCode.WorkerProtocol : TranscriptionErrorCode.WorkerExited;
+                SetState(WorkerState.Failed);
+                throw new TranscriptionException(LastError.Value, VoiceInputStrings.TranscriptionError(LastError.Value), exception);
+            }
         }
-        finally
-        {
-            exchangeLock.Release();
-        }
+        finally { exchangeLock.Release(); }
+    }
+
+    private void SetState(WorkerState state) { State = state; StateChanged?.Invoke(this, state); }
+    private async ValueTask ResetAsync()
+    {
+        if (connection is null) return;
+        var old = connection;
+        connection = null;
+        await old.DisposeAsync().ConfigureAwait(false);
+    }
+
+    public void ForceStop()
+    {
+        if (connection is IForceStop worker) worker.ForceStop();
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (disposed)
-        {
-            return;
-        }
-
+        if (disposed) return;
         disposed = true;
-        await exchangeLock.WaitAsync();
-        try
-        {
-            if (pipe?.IsConnected == true && writer is not null)
-            {
-                try
-                {
-                    writer.Write(ShutdownCommand);
-                    writer.Flush();
-                }
-                catch (IOException)
-                {
-                    // The worker has already gone away.
-                }
-            }
-
-            reader?.Dispose();
-            writer?.Dispose();
-            pipe?.Dispose();
-
-            if (process is not null)
-            {
-                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-                try
-                {
-                    await process.WaitForExitAsync(timeout.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    if (!process.HasExited)
-                    {
-                        process.Kill(entireProcessTree: true);
-                    }
-
-                    await process.WaitForExitAsync(CancellationToken.None);
-                }
-
-                process.Dispose();
-            }
-        }
-        finally
-        {
-            exchangeLock.Release();
-            exchangeLock.Dispose();
-        }
-
+        await exchangeLock.WaitAsync().ConfigureAwait(false);
+        try { await ResetAsync().ConfigureAwait(false); SetState(WorkerState.Stopped); }
+        finally { exchangeLock.Release(); }
         GC.SuppressFinalize(this);
     }
-
-    private string Exchange(ReadOnlyMemory<float> samples, int sampleRate)
-    {
-        var activePipe = pipe ?? throw new InvalidOperationException("The ASR worker has not been started.");
-        var activeReader = reader ?? throw new InvalidOperationException("The ASR worker response reader is missing.");
-        var activeWriter = writer ?? throw new InvalidOperationException("The ASR worker request writer is missing.");
-
-        try
-        {
-            activeWriter.Write(TranscribeCommand);
-            activeWriter.Write(sampleRate);
-            activeWriter.Write(samples.Length);
-            activeWriter.Write(MemoryMarshal.AsBytes(samples.Span));
-            activeWriter.Flush();
-
-            var status = activeReader.ReadByte();
-            var message = activeReader.ReadString();
-            if (status != 0)
-            {
-                throw new InvalidOperationException($"Local transcription failed: {message}");
-            }
-
-            return message;
-        }
-        catch (EndOfStreamException exception)
-        {
-            throw new InvalidOperationException($"The ASR worker stopped unexpectedly. {GetWorkerLog()}", exception);
-        }
-        catch (IOException exception) when (!activePipe.IsConnected)
-        {
-            throw new InvalidOperationException($"The ASR worker connection was lost. {GetWorkerLog()}", exception);
-        }
-    }
-
-    private void OnWorkerLog(object sender, DataReceivedEventArgs eventArgs)
-    {
-        if (eventArgs.Data is null)
-        {
-            return;
-        }
-
-        workerLog.Enqueue(eventArgs.Data);
-        while (workerLog.Count > 20)
-        {
-            workerLog.TryDequeue(out _);
-        }
-    }
-
-    private string GetWorkerLog() => string.Join(Environment.NewLine, workerLog);
 }

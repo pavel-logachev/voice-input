@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from random import Random
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "assets"
@@ -99,6 +99,8 @@ def base(size: tuple[int, int], margin: int) -> Image.Image:
 
 
 BACKDROP = (31, 33, 44)
+# product/settings.png снят в 200 %: до этой строки — шапка, движок распознавания и блок «Распознавание».
+SETTINGS_CROP = 1104
 
 
 def overlay_tile(path: Path, size: tuple[int, int]) -> Image.Image:
@@ -117,8 +119,22 @@ def rounded(image: Image.Image, radius: int) -> Image.Image:
     return result
 
 
+def fade_bottom(image: Image.Image, length: int) -> Image.Image:
+    """Нижний край растворяется в фоне: окно продолжается ниже, его просто не видно на картинке."""
+    result = image.copy()
+    alpha = result.getchannel("A")
+    ramp = Image.new("L", (1, length))
+    for y in range(length):
+        t = y / max(length - 1, 1)
+        ramp.putpixel((0, y), round(255 * (1 - t) ** 1.6))
+    mask = Image.new("L", result.size, 255)
+    mask.paste(ramp.resize((result.width, length)), (0, result.height - length))
+    result.putalpha(ImageChops.multiply(alpha, mask))
+    return result
+
+
 def render_product_demo() -> None:
-    """Настоящий интерфейс 1.1: слева шесть состояний оверлея, справа окно настроек."""
+    """Настоящий интерфейс 1.2: слева шесть состояний оверлея, справа верх окна настроек с выбором движка."""
     size = (1440, 800)
     im = Image.new("RGB", size, PAPER)
     draw = ImageDraw.Draw(im)
@@ -126,7 +142,7 @@ def render_product_demo() -> None:
     draw.rectangle((0, 0, size[0], 172), fill=INK)
     draw.rectangle((0, 0, 12, size[1]), fill=INDIGO)
     draw.rectangle((12, 0, 16, size[1]), fill=SIGNAL)
-    tracking(draw, (74, 38), "VOICE INPUT 1.1 / WINDOWS 10 И 11", font(17), MUTED, 2)
+    tracking(draw, (74, 38), "VOICE INPUT 1.2 / WINDOWS 10 И 11", font(17), MUTED, 2)
     draw.text((70, 76), "Тихий оверлей и одно небольшое окно настроек.", font=font(46), fill=WHITE)
 
     product = OUT / "product"
@@ -149,16 +165,23 @@ def render_product_demo() -> None:
         tracking(draw, (x, y), label, font(15), PAPER_MUTED, 2)
         im.alpha_composite(rounded(overlay_tile(product / filename, (tile_w, tile_h)), 12), (x, y + 30))
 
+    # Окно 1.2 выше окна 1.1: целиком в 471 px его текст стал бы нечитаемым. Берем верх окна —
+    # движок распознавания с карточкой модели и блок «Распознавание», — а низ растворяем.
     settings = Image.open(product / "settings.png").convert("RGB")
+    settings = settings.crop((0, 0, settings.width, SETTINGS_CROP))
     settings_h = 471
     settings_w = round(settings.width * settings_h / settings.height)
     settings = settings.resize((settings_w, settings_h), Image.Resampling.LANCZOS)
     sx, sy = 1370 - settings_w, 214
     tracking(draw, (sx, sy), "07 / НАСТРОЙКИ", font(15), PAPER_MUTED, 2)
+    window = Image.new("RGBA", size, (0, 0, 0, 0))
     shadow = Image.new("RGBA", size, (0, 0, 0, 0))
-    ImageDraw.Draw(shadow).rounded_rectangle((sx - 6, sy + 36, sx + settings_w + 6, sy + 40 + settings_h), radius=18, fill=(18, 28, 63, 46))
-    im = Image.alpha_composite(im, shadow.filter(ImageFilter.GaussianBlur(14)))
-    im.alpha_composite(rounded(settings, 10), (sx, sy + 30))
+    ImageDraw.Draw(shadow).rounded_rectangle((sx - 6, sy + 36, sx + settings_w + 6, sy + 40 + settings_h + 24), radius=18, fill=(18, 28, 63, 46))
+    window = Image.alpha_composite(window, shadow.filter(ImageFilter.GaussianBlur(14)))
+    window.alpha_composite(rounded(settings, 10), (sx, sy + 30))
+    window = window.crop((0, 0, size[0], sy + 30 + settings_h))
+    window = fade_bottom(window, 38)
+    im.alpha_composite(window)
     draw = ImageDraw.Draw(im)
 
     draw.line((70, 742, 1370, 742), fill=PAPER_LINE, width=2)

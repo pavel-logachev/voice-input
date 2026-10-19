@@ -37,7 +37,7 @@ public sealed class SegmentingTranscriber(
         foreach (var segment in PcmSegmenter.Split(audio.Samples, options))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var text = (await client.TranscribeSegmentAsync(segment, audio.SampleRate, cancellationToken)).Trim();
+            var text = (await client.TranscribeSegmentAsync(segment, audio.SampleRate, cancellationToken).ConfigureAwait(false)).Trim();
             if (text.Length > 0)
             {
                 transcripts.Add(text);

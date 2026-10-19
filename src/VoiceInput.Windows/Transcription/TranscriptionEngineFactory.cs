@@ -4,9 +4,11 @@ using VoiceInput.Windows.Settings;
 namespace VoiceInput.Windows.Transcription;
 
 /// <summary>A ready transcriber together with whatever must be released when the engine is replaced.</summary>
-public sealed class TranscriptionEngineHandle(ITranscriber transcriber, IAsyncDisposable? resources = null) : IAsyncDisposable
+public sealed class TranscriptionEngineHandle(ITranscriber transcriber, IAsyncDisposable? resources = null) : IAsyncDisposable, IForceStop
 {
     public ITranscriber Transcriber { get; } = transcriber ?? throw new ArgumentNullException(nameof(transcriber));
+
+    public void ForceStop() { if (resources is IForceStop worker) worker.ForceStop(); }
 
     public async ValueTask DisposeAsync()
     {
@@ -22,15 +24,16 @@ public sealed class TranscriptionEngineFactory(
     DpapiOpenAiApiKeyProvider apiKeyProvider,
     string workerExecutablePath)
 {
-    public static string DefaultWorkerExecutablePath { get; } = Path.Combine(
-        AppContext.BaseDirectory,
-        "worker",
-        "VoiceInput.Asr.Worker.exe");
+    public static string DefaultWorkerExecutablePath => File.Exists(Path.Combine(AppContext.BaseDirectory, "VoiceInput.Asr.Worker.exe"))
+        ? Path.Combine(AppContext.BaseDirectory, "VoiceInput.Asr.Worker.exe")
+        : Path.Combine(AppContext.BaseDirectory, "worker", "VoiceInput.Asr.Worker.exe");
 
     public bool IsOpenAiConfigured => apiKeyProvider.HasKey;
 
-    /// <summary>The local engine needs its worker next to the application; ordinary installs ship without it.</summary>
-    public bool IsLocalEngineAvailable => File.Exists(workerExecutablePath);
+    /// <summary>The local engine is selectable even before its model is downloaded.</summary>
+    public bool IsLocalEngineAvailable => File.Exists(workerExecutablePath)
+        && File.Exists(Path.Combine(Environment.GetEnvironmentVariable("VOICE_INPUT_TRANSCRIBE_RUNTIME")
+            ?? Path.Combine(AppContext.BaseDirectory, "runtime", LocalAsrAssetProvisioner.RuntimeFolderName), "transcribe.dll"));
 
     public async Task<TranscriptionEngineHandle> CreateAsync(
         AppSettings settings,
@@ -41,6 +44,7 @@ public sealed class TranscriptionEngineFactory(
         return settings.Engine switch
         {
             TranscriptionEngine.OpenAi => CreateOpenAi(settings),
+            TranscriptionEngine.CustomOpenAiCompatible => CreateCustom(settings),
             TranscriptionEngine.Local => await CreateLocalAsync(progress, cancellationToken).ConfigureAwait(false),
             _ => throw new ArgumentOutOfRangeException(nameof(settings), settings.Engine, null),
         };
@@ -55,24 +59,28 @@ public sealed class TranscriptionEngineFactory(
         return new TranscriptionEngineHandle(transcriber, new DisposableAdapter(httpClient));
     }
 
-    private async Task<TranscriptionEngineHandle> CreateLocalAsync(
+    private static TranscriptionEngineHandle CreateCustom(AppSettings settings)
+    {
+        if (EngineStatus.Evaluate(settings, true, true) == EngineReadiness.CustomNotConfigured)
+            throw new TranscriptionException(TranscriptionErrorCode.CustomNotConfigured,
+                VoiceInputStrings.TranscriptionError(TranscriptionErrorCode.CustomNotConfigured));
+        var baseUri = CustomEndpointPolicy.NormalizeBaseUrl(settings.CustomBaseUrl ?? string.Empty);
+        var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = OpenAiTranscriber.RecommendedRequestTimeout };
+        var transcriber = new OpenAiTranscriber(http, new DpapiCustomApiKeyProvider(),
+            new Uri(baseUri, "audio/transcriptions"), model: settings.CustomModel!, language: settings.Language, customProvider: true);
+        return new TranscriptionEngineHandle(transcriber, new DisposableAdapter(http));
+    }
+
+    private Task<TranscriptionEngineHandle> CreateLocalAsync(
         IProgress<string>? progress,
         CancellationToken cancellationToken)
     {
-        var assets = await new LocalAsrAssetProvisioner().EnsureAsync(progress, cancellationToken).ConfigureAwait(false);
-        var client = new GigaAmWorkerClient(workerExecutablePath, assets.RuntimeDirectory, assets.ModelPath);
-        try
-        {
-            progress?.Report("Запускаю локальную модель…");
-            await client.StartAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch
-        {
-            await client.DisposeAsync().ConfigureAwait(false);
-            throw;
-        }
-
-        return new TranscriptionEngineHandle(new SegmentingTranscriber(client), client);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!IsLocalEngineAvailable)
+            throw new TranscriptionException(TranscriptionErrorCode.WorkerExited,
+                VoiceInputStrings.TranscriptionError(TranscriptionErrorCode.WorkerExited));
+        var local = new LocalEngineTranscriber(workerExecutablePath);
+        return Task.FromResult(new TranscriptionEngineHandle(local, local));
     }
 
     private sealed class DisposableAdapter(IDisposable inner) : IAsyncDisposable

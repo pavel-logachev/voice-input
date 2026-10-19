@@ -27,6 +27,8 @@ public partial class MainWindow : Window, IActivationOverlay
     private int hideVersion;
     private bool shutdownRequested;
     private bool closed;
+    private nint targetMonitor;
+    private bool positioning;
 
     public MainWindow()
     {
@@ -34,11 +36,23 @@ public partial class MainWindow : Window, IActivationOverlay
         Theme.Apply(this);
         ApplySurface();
         SourceInitialized += OnSourceInitialized;
-        DpiChanged += (_, _) => UiEnvironment.ApplyTextFormatting(this);
+        DpiChanged += (_, _) =>
+        {
+            UiEnvironment.ApplyTextFormatting(this);
+            if (IsVisible) PositionAboveTaskbar();
+        };
+        SizeChanged += (_, _) => { if (IsVisible) PositionAboveTaskbar(); };
+        IsVisibleChanged += (_, _) =>
+        {
+            if (IsVisible) return;
+            StopMotion();
+            StopPresentationMotion();
+        };
         Closed += (_, _) =>
         {
             closed = true;
-            timer.Stop();
+            StopMotion();
+            StopPresentationMotion();
         };
         timer.Tick += (_, _) => UpdateTimerText();
     }
@@ -134,23 +148,7 @@ public partial class MainWindow : Window, IActivationOverlay
         Present(animateWidth: false);
     }
 
-    public void SetRecordingLevel(float level)
-    {
-        if (!Dispatcher.CheckAccess())
-        {
-            if (!Dispatcher.HasShutdownStarted)
-            {
-                _ = Dispatcher.BeginInvoke(() => SetRecordingLevel(level));
-            }
-
-            return;
-        }
-
-        if (AudioMeter.Visibility == Visibility.Visible)
-        {
-            AudioMeter.SetLevel(level);
-        }
-    }
+    public void SetRecordingLevel(float level) => AudioMeter.SetLevel(level);
 
     void IActivationOverlay.Hide()
     {
@@ -307,6 +305,7 @@ public partial class MainWindow : Window, IActivationOverlay
         var target = MeasureWidth();
         Stage.BeginAnimation(WidthProperty, null);
         Stage.Width = target;
+        if (!IsVisible) targetMonitor = OverlayMonitor.CaptureTarget();
         PositionAboveTaskbar();
 
         if (IsVisible)
@@ -330,6 +329,9 @@ public partial class MainWindow : Window, IActivationOverlay
 
         Stage.Opacity = 0;
         base.Show();
+        // Moving the hidden HWND to a different-DPI monitor can update WPF's scale during Show.
+        // Finish positioning before the transparent stage starts fading in.
+        PositionAboveTaskbar();
         if (UiEnvironment.Animations)
         {
             ((Storyboard)Resources["FadeInStoryboard"]).Begin(this, true);
@@ -349,6 +351,7 @@ public partial class MainWindow : Window, IActivationOverlay
             listeningSince = DateTime.UtcNow;
             TimerText.Text = "0:00";
             timer.Start();
+            AudioMeter.SetRecording(true);
         }
 
         var animate = UiEnvironment.Animations;
@@ -398,8 +401,16 @@ public partial class MainWindow : Window, IActivationOverlay
         ProcessingCueShift.BeginAnimation(TranslateTransform.XProperty, slide);
     }
 
+    private void StopPresentationMotion()
+    {
+        ((Storyboard)Resources["FadeInStoryboard"]).Remove(this);
+        ((Storyboard)Resources["FadeOutStoryboard"]).Remove(this);
+        Stage.BeginAnimation(WidthProperty, null);
+    }
+
     private void StopMotion()
     {
+        AudioMeter.SetRecording(false);
         timer.Stop();
         ((Storyboard)Resources["RippleStoryboard"]).Stop(this);
         ((Storyboard)Resources["SpinStoryboard"]).Stop(this);
@@ -419,23 +430,35 @@ public partial class MainWindow : Window, IActivationOverlay
     private void UpdateTimerText()
     {
         var elapsed = DateTime.UtcNow - listeningSince;
-        TimerText.Text = $"{(int)elapsed.TotalMinutes}:{elapsed.Seconds:00}";
+        var text = $"{(int)elapsed.TotalMinutes}:{elapsed.Seconds:00}";
+        if (TimerText.Text != text) TimerText.Text = text;
     }
 
     private void PositionAboveTaskbar()
     {
-        UpdateLayout();
-        var workArea = SystemParameters.WorkArea;
-        // The transparent margin around the capsule already keeps it clear of the taskbar.
-        var placement = OverlayPositioning.BottomCenter(
-            new OverlayWorkArea(workArea.Left, workArea.Top, workArea.Width, workArea.Height),
-            ActualWidth,
-            ActualHeight,
-            Width,
-            ActualHeight,
-            margin: 0);
-        Left = placement.Left;
-        Top = placement.Top;
+        if (positioning || closed) return;
+        positioning = true;
+        try
+        {
+            if (targetMonitor == 0) targetMonitor = OverlayMonitor.CaptureTarget();
+            var handle = new WindowInteropHelper(this).EnsureHandle();
+            // Window is Collapsed before its first Show, so measuring Window itself still yields zero.
+            // Measure its content, including the unchanged 28-DIP shadow margin, at the final width.
+            Stage.Measure(new Size(Width, double.PositiveInfinity));
+            var desiredHeight = Stage.DesiredSize.Height;
+            Stage.Arrange(new Rect(0, 0, Width, desiredHeight));
+            var dpi = VisualTreeHelper.GetDpi(this);
+            var workArea = OverlayMonitor.WorkArea(targetMonitor);
+            // Position in physical screen coordinates. Scaling an absolute monitor origin as a DIP
+            // would be wrong on mixed-DPI desktops; only scale the overlay's local dimensions.
+            var placement = OverlayPositioning.BottomCenter(
+                workArea, 0, 0, Width * dpi.DpiScaleX, desiredHeight * dpi.DpiScaleY, margin: 0);
+            OverlayMonitor.Position(handle, placement.Left, placement.Top);
+        }
+        finally
+        {
+            positioning = false;
+        }
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)

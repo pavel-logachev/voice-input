@@ -24,6 +24,7 @@ public sealed class OpenAiTranscriber : ITranscriber
     private readonly TimeSpan requestTimeout;
     private readonly string model;
     private readonly string? language;
+    private readonly bool customProvider;
 
     public OpenAiTranscriber(
         HttpClient httpClient,
@@ -31,12 +32,15 @@ public sealed class OpenAiTranscriber : ITranscriber
         Uri? endpoint = null,
         TimeSpan? requestTimeout = null,
         string model = DefaultModel,
-        string? language = null)
+        string? language = null,
+        bool customProvider = false)
     {
         this.httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         this.apiKeyProvider = apiKeyProvider ?? throw new ArgumentNullException(nameof(apiKeyProvider));
         this.endpoint = endpoint ?? DefaultEndpoint;
-        if (!string.Equals(this.endpoint.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        this.customProvider = customProvider;
+        if (customProvider ? !CustomEndpointPolicy.IsAllowed(this.endpoint)
+            : !string.Equals(this.endpoint.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
         {
             throw new ArgumentException("The OpenAI transcription endpoint must use HTTPS.", nameof(endpoint));
         }
@@ -70,12 +74,17 @@ public sealed class OpenAiTranscriber : ITranscriber
         cancellationToken.ThrowIfCancellationRequested();
         var wave = await Task.Run(() => EncodePcm16Wave(audio), cancellationToken).ConfigureAwait(false);
         var apiKey = apiKeyProvider.GetApiKey();
+        if (customProvider && !DpapiCustomApiKeyProvider.IsValidKey(apiKey))
+            throw Failure(TranscriptionErrorCode.InvalidKeyCharacters, VoiceInputStrings.Get("custom.key.error.invalidChars"));
 
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(requestTimeout);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        if (!string.IsNullOrWhiteSpace(apiKey))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        }
         using var multipart = new MultipartFormDataContent
         {
             { new StringContent(model, Encoding.UTF8), "model" },
@@ -107,30 +116,30 @@ public sealed class OpenAiTranscriber : ITranscriber
                 || !json.RootElement.TryGetProperty("text", out var text)
                 || text.ValueKind != JsonValueKind.String)
             {
-                throw new InvalidOperationException("OpenAI вернул ответ без расшифровки.");
+                throw Failure(TranscriptionErrorCode.InvalidResponse, "OpenAI вернул ответ без расшифровки.");
             }
 
             return (text.GetString() ?? string.Empty).Trim();
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new InvalidOperationException("OpenAI не ответил вовремя.");
+            throw Failure(TranscriptionErrorCode.Timeout, "OpenAI не ответил вовремя.");
         }
         catch (JsonException)
         {
-            throw new InvalidOperationException("OpenAI вернул поврежденный ответ.");
+            throw Failure(TranscriptionErrorCode.InvalidResponse, "OpenAI вернул поврежденный ответ.");
         }
         catch (IOException)
         {
-            throw new InvalidOperationException("Не удалось прочитать ответ OpenAI.");
+            throw Failure(TranscriptionErrorCode.InvalidResponse, "Не удалось прочитать ответ OpenAI.");
         }
         catch (HttpRequestException exception) when (exception.InnerException is IOException)
         {
-            throw new InvalidOperationException("Не удалось прочитать ответ OpenAI.");
+            throw Failure(TranscriptionErrorCode.InvalidResponse, "Не удалось прочитать ответ OpenAI.");
         }
         catch (HttpRequestException)
         {
-            throw new InvalidOperationException("Не удалось связаться с OpenAI. Проверьте подключение к интернету.");
+            throw Failure(TranscriptionErrorCode.Network, "Не удалось связаться с OpenAI. Проверьте подключение к интернету.");
         }
     }
 
@@ -168,8 +177,18 @@ public sealed class OpenAiTranscriber : ITranscriber
         return memory.ToArray();
     }
 
-    private static InvalidOperationException CreateRequestFailure(HttpStatusCode statusCode) =>
-        new(statusCode switch
+    private InvalidOperationException Failure(TranscriptionErrorCode code, string message) =>
+        customProvider ? new TranscriptionException(code, VoiceInputStrings.TranscriptionError(code))
+            : new InvalidOperationException(message);
+
+    private InvalidOperationException CreateRequestFailure(HttpStatusCode statusCode) =>
+        Failure(statusCode switch
+        {
+            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => TranscriptionErrorCode.Unauthorized,
+            HttpStatusCode.TooManyRequests => TranscriptionErrorCode.RateLimited,
+            < HttpStatusCode.InternalServerError => TranscriptionErrorCode.InvalidRequest,
+            _ => TranscriptionErrorCode.ServiceUnavailable,
+        }, statusCode switch
         {
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden =>
                 $"OpenAI отклонил API-ключ (HTTP {(int)statusCode}).",

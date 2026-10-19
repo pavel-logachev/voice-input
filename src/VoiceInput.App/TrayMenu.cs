@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using VoiceInput.Windows.Audio;
+using VoiceInput.Windows.Transcription;
 
 namespace VoiceInput.App;
 
@@ -40,11 +41,13 @@ internal sealed class TrayMenu : IDisposable
         Strip.Items.Add(new ToolStripSeparator());
 
         Engine = new ToolStripMenuItem("Распознавание");
-        OpenAi = new ToolStripMenuItem("OpenAI, через интернет");
-        Local = new ToolStripMenuItem("На этом компьютере (GigaAM)");
+        OpenAi = new ToolStripMenuItem(EngineStrings.OpenAiMenu);
+        Local = new ToolStripMenuItem(EngineStrings.LocalMenu);
         Add(Engine.DropDownItems, OpenAi);
         Add(Engine.DropDownItems, Local);
-        Engine.Visible = localEngineAvailable;
+        Custom = new ToolStripMenuItem(EngineStrings.CustomMenu);
+        Add(Engine.DropDownItems, Custom);
+        Engine.Visible = true;
         Add(Strip.Items, Engine);
 
         Microphone = new ToolStripMenuItem("Микрофон");
@@ -77,6 +80,8 @@ internal sealed class TrayMenu : IDisposable
     public ToolStripMenuItem OpenAi { get; }
 
     public ToolStripMenuItem Local { get; }
+
+    public ToolStripMenuItem Custom { get; }
 
     public ToolStripMenuItem Microphone { get; }
 

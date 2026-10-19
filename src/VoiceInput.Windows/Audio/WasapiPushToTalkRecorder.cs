@@ -21,7 +21,7 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
     private Task cleanupTask = Task.CompletedTask;
     private long maximumRawBytes;
     private bool stopRequested;
-    private bool disposed;
+    private int disposed;
 
     public WasapiPushToTalkRecorder()
         : this(static () => new WasapiCaptureSession())
@@ -53,7 +53,7 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
             {
                 lock (gate)
                 {
-                    ObjectDisposedException.ThrowIf(disposed, this);
+                    ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
                     if (capture is not null)
                     {
                         throw new InvalidOperationException("Audio recording is already active.");
@@ -68,6 +68,12 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
                     var session = capture = captureFactory();
                     try
                     {
+                        // Dispose never waits for this gate. A late factory result still belongs to us.
+                        if (Volatile.Read(ref disposed) != 0)
+                        {
+                            CleanupRecording(session);
+                            return;
+                        }
                         capturedFormat = session.WaveFormat;
                         maximumRawBytes = checked((long)(capturedFormat.AverageBytesPerSecond * MaximumRecordingDuration.TotalSeconds));
                         rawAudio = new MemoryStream(capacity: (int)Math.Min(maximumRawBytes, 4 * 1024 * 1024));
@@ -79,6 +85,8 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
                         session.DataAvailable += OnDataAvailable;
                         session.RecordingStopped += OnRecordingStopped;
                         session.StartRecording();
+                        // Startup may have been blocked inside the driver while shutdown completed.
+                        if (Volatile.Read(ref disposed) != 0) CleanupRecording(session);
                     }
                     catch
                     {
@@ -103,12 +111,12 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
         RequestStop(currentCapture);
         await stoppedTask.WaitAsync(StopWaitTimeout, cancellationToken).ConfigureAwait(false);
 
-        byte[] bytes;
+        ArraySegment<byte> bytes;
         WaveFormat format;
         lock (gate)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            bytes = rawAudio?.ToArray() ?? [];
+            bytes = rawAudio is not null && rawAudio.TryGetBuffer(out var capturedBytes) ? capturedBytes : default;
             format = capturedFormat ?? throw new InvalidOperationException("The capture format was not available.");
         }
 
@@ -159,19 +167,19 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
 
     public void Dispose()
     {
-        lock (gate)
-        {
-            if (disposed)
-            {
-                return;
-            }
-
-            disposed = true;
-        }
+        // Publish shutdown without acquiring the startup gate: a driver can hold it forever.
+        if (Interlocked.Exchange(ref disposed, 1) != 0) return;
 
         try
         {
-            CancelAsync().AsTask().GetAwaiter().GetResult();
+            // Cancellation can enter a native StopRecording call; even that must not hold up process exit.
+            var cleanup = Task.Run(async () => await CancelAsync().ConfigureAwait(false));
+            try { cleanup.WaitAsync(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult(); }
+            catch (TimeoutException)
+            {
+                _ = cleanup.ContinueWith(task => _ = task.Exception, CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            }
         }
         catch (Exception)
         {
@@ -347,14 +355,14 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
         }
     }
 
-    private static float[] ConvertToMono16Khz(byte[] bytes, WaveFormat format)
+    private static float[] ConvertToMono16Khz(ArraySegment<byte> bytes, WaveFormat format)
     {
-        if (bytes.Length == 0)
+        if (bytes.Count == 0)
         {
             return [];
         }
 
-        using var memory = new MemoryStream(bytes, writable: false);
+        using var memory = new MemoryStream(bytes.Array!, bytes.Offset, bytes.Count, writable: false);
         using var raw = new RawSourceWaveStream(memory, format);
         ISampleProvider provider = raw.ToSampleProvider();
 
@@ -368,14 +376,18 @@ public sealed class WasapiPushToTalkRecorder : IAudioRecorder, IRecordingLevelSo
             provider = new WdlResamplingSampleProvider(provider, OutputSampleRate);
         }
 
-        var result = new List<float>();
-        var buffer = new float[OutputSampleRate];
-        int read;
-        while ((read = provider.Read(buffer)) > 0)
+        var estimated = checked((int)Math.Ceiling(bytes.Count / (double)format.BlockAlign * OutputSampleRate / format.SampleRate));
+        var result = new float[format.SampleRate == OutputSampleRate ? estimated : estimated + 256];
+        var count = 0;
+        while (true)
         {
-            result.AddRange(buffer.AsSpan(0, read).ToArray());
+            if (count == result.Length) Array.Resize(ref result, checked(result.Length + OutputSampleRate));
+            var read = provider.Read(result.AsSpan(count));
+            if (read == 0) break;
+            count += read;
+            if (count == result.Length && format.SampleRate == OutputSampleRate) break;
         }
-
-        return [.. result];
+        if (count != result.Length) Array.Resize(ref result, count);
+        return result;
     }
 }

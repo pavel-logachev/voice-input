@@ -27,6 +27,32 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void VersionOneMigratesWithoutLosingChoices()
+    {
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(FilePath, """{"Version":1,"Engine":"Local","StartWithWindows":true,"Language":"ru","MicrophoneId":"mic-42"}""");
+        var settings = new SettingsStore(FilePath).Load();
+        Assert.Equal(2, settings.Version);
+        Assert.Equal(TranscriptionEngine.Local, settings.Engine);
+        Assert.True(settings.StartWithWindows);
+        Assert.Equal("ru", settings.Language);
+        Assert.Equal("mic-42", settings.MicrophoneId);
+    }
+
+    [Fact]
+    public void VersionTwoCustomSettingsRoundTripWithoutSecrets()
+    {
+        var store = new SettingsStore(FilePath);
+        store.Save(new AppSettings { Engine = TranscriptionEngine.CustomOpenAiCompatible,
+            CustomBaseUrl = "http://localhost:8000/v1", CustomModel = "whisper-1" });
+        var loaded = store.Load();
+        Assert.Equal(TranscriptionEngine.CustomOpenAiCompatible, loaded.Engine);
+        Assert.Equal("http://localhost:8000/v1", loaded.CustomBaseUrl);
+        Assert.Equal("whisper-1", loaded.CustomModel);
+        Assert.DoesNotContain("ApiKey", File.ReadAllText(FilePath), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void SettingsRoundTrip()
     {
         var store = new SettingsStore(FilePath);

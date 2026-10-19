@@ -1,10 +1,12 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <StartupObject>VoiceInput.Windows.Tests.CustomCheckUiRegressionTests</StartupObject>
     <!-- The palette of the application is checked here, and its colours are WPF types. -->
     <UseWPF>true</UseWPF>
   </PropertyGroup>
@@ -24,6 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Resource Include="..\..\assets\VoiceInput.ico" Link="VoiceInput.ico" />
     <ProjectReference Include="..\..\src\VoiceInput.App\VoiceInput.App.csproj" />
     <ProjectReference Include="..\..\src\VoiceInput.Windows\VoiceInput.Windows.csproj" />
   </ItemGroup>

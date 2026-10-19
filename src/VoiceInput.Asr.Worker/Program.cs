@@ -1,4 +1,4 @@
-﻿using System.IO.Pipes;
+using System.IO.Pipes;
 using VoiceInput.Asr.Worker;
 
 const byte TranscribeCommand = 1;
@@ -7,7 +7,9 @@ const int RequiredSampleRate = 16_000;
 const int MaximumSamples = RequiredSampleRate * 25;
 
 var options = ParseArguments(args);
+var loadClock = System.Diagnostics.Stopwatch.StartNew();
 using var model = new GigaAmSession(options.RuntimeDirectory, options.ModelPath);
+VoiceInput.Core.Diagnostics.EngineDiagnostics.WriteTiming("native-model-load", loadClock.Elapsed);
 Console.Error.WriteLine($"VOICE_INPUT_ASR_READY backend={model.Backend}");
 
 using var pipe = new NamedPipeServerStream(

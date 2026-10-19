@@ -5,6 +5,32 @@ namespace VoiceInput.Core.Tests.Audio;
 public sealed class RecordingLevelHistoryTests
 {
     [Fact]
+    public void EnvelopeDependsOnElapsedTimeNotFrameCount()
+    {
+        var fast = new RecordingLevelHistory(48);
+        var slow = new RecordingLevelHistory(48);
+        for (var i = 0; i < 12; i++) fast.Advance(1, TimeSpan.FromMilliseconds(10));
+        for (var i = 0; i < 3; i++) slow.Advance(1, TimeSpan.FromMilliseconds(40));
+        Assert.InRange(fast.CurrentLevel, 0.98f, 1f);
+        Assert.Equal(fast.CurrentLevel, slow.CurrentLevel, 5);
+        for (var i = 0; i < 24; i++) fast.Advance(0, TimeSpan.FromMilliseconds(10));
+        for (var i = 0; i < 6; i++) slow.Advance(0, TimeSpan.FromMilliseconds(40));
+        Assert.Equal(fast.CurrentLevel, slow.CurrentLevel, 5);
+        Assert.InRange(fast.CurrentLevel, 0.03f, 0.07f);
+    }
+
+    [Fact]
+    public void ScrollMovesContinuouslyBetweenSamples()
+    {
+        var history = new RecordingLevelHistory(4);
+        history.Advance(1, TimeSpan.FromMilliseconds(15));
+        Assert.Equal(0.5, history.ScrollFraction, 5);
+        history.Advance(1, TimeSpan.FromMilliseconds(15));
+        Assert.Equal(0, history.ScrollFraction, 5);
+        Assert.True(history.Values[^1] > 0);
+    }
+
+    [Fact]
     public void HistoryStartsAsAFlatLine()
     {
         var history = new RecordingLevelHistory(8);
@@ -19,7 +45,8 @@ public sealed class RecordingLevelHistoryTests
 
         history.Push(2f);
 
-        Assert.Equal([0f, 0f, 0f, 1f], history.Values.ToArray());
+        Assert.Equal([0f, 0f, 0f], history.Values[..3].ToArray());
+        Assert.InRange(history.Values[^1], 0.69f, 0.71f);
     }
 
     [Fact]

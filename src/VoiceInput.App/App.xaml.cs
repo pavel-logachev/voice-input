@@ -18,6 +18,8 @@ namespace VoiceInput.App;
 
 public partial class App : System.Windows.Application, IDisposable, ISettingsHost
 {
+    public App() => CrashLog.Register(this);
+
     private readonly CancellationTokenSource lifetime = new();
     private readonly SemaphoreSlim engineGate = new(1, 1);
     private readonly SettingsStore settingsStore = new();
@@ -41,6 +43,7 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
     private ManualReleaseGate? toggleReleaseGate;
     private string? initializationError;
     private int sessionRunning;
+    private EngineSettingsServices? engineSettings;
     private bool disposed;
 
     AppSettings ISettingsHost.Current => settings;
@@ -52,6 +55,13 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
     string ISettingsHost.Version => ApplicationVersion;
 
     IReadOnlyList<MicrophoneChoice> ISettingsHost.Microphones => AudioDeviceCatalog.ListMicrophones();
+
+    ILocalModelHost ISettingsHost.LocalModel => EngineSettings;
+
+    ICustomServerHost ISettingsHost.CustomServer => EngineSettings;
+
+    // Lives as long as the application, so a model download goes on after the settings window is closed.
+    private EngineSettingsServices EngineSettings => engineSettings ??= new EngineSettingsServices();
 
     async Task<OpenAiKeyCheckResult> ISettingsHost.CheckApiKeyAsync(string? candidate)
     {
@@ -133,6 +143,7 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
         }
 
         disposed = true;
+        workflow?.CancelActive();
         lifetime.Cancel();
 
         if (hotkey is not null)
@@ -157,11 +168,20 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
         {
             var closing = engine;
             engine = null;
-            Task.Run(async () => await closing.DisposeAsync()).GetAwaiter().GetResult();
+            // OnExit is synchronous; never wait on a UI-captured continuation or an unresponsive worker.
+            try { BoundedShutdown.DisposeAsync(closing, TimeSpan.FromSeconds(4), closing.ForceStop).GetAwaiter().GetResult(); }
+            catch (Exception exception) { Log($"shutdown-engine-error: {exception.GetType().Name}"); }
         }
 
         settingsWindow?.Close();
         settingsWindow = null;
+        if (engineSettings is not null)
+        {
+            var services = engineSettings;
+            engineSettings = null;
+            try { BoundedShutdown.DisposeAsync(services, TimeSpan.FromSeconds(2)).GetAwaiter().GetResult(); }
+            catch (Exception exception) { Log($"shutdown-settings-error: {exception.GetType().Name}"); }
+        }
 
         if (trayIcon is not null)
         {
@@ -221,7 +241,9 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
             return "Идет диктовка. Подождите ее завершения.";
         }
 
-        var engineChanged = next.Engine != settings.Engine || engine is null;
+        var engineChanged = next.Engine != settings.Engine || engine is null
+            || next.CustomBaseUrl != settings.CustomBaseUrl || next.CustomModel != settings.CustomModel
+            || next.LocalModel != settings.LocalModel;
         var languageChanged = next.Language != settings.Language;
         if (next.StartWithWindows != settings.StartWithWindows)
         {
@@ -300,9 +322,9 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
                 : new WindowsTextInserter();
             workflow = new DictationWorkflow(
                 new ForegroundTargetCapture(),
-                overlay,
+                new UiActivationOverlay(Dispatcher, overlay),
                 new ModifierReleaseGate(),
-                textInserter,
+                new UiTextInserter(Dispatcher, textInserter),
                 new SystemAsyncDelay(),
                 recorder,
                 pending.Transcriber);
@@ -316,7 +338,7 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
             }
 
             Log("dictation-ready");
-            UpdateStatus(settings.Engine == TranscriptionEngine.OpenAi ? "Готов · OpenAI" : "Готов · на этом компьютере", TrayStatus.Ready);
+            UpdateEngineReadiness();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -325,7 +347,8 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
         {
             Log($"initialization-error: {exception.GetType().Name}: {exception.Message}");
             initializationError = exception.Message;
-            UpdateStatus("Нужна настройка", TrayStatus.Attention);
+            if (settings.Engine == TranscriptionEngine.CustomOpenAiCompatible) UpdateEngineReadiness();
+            else UpdateStatus("Нужна настройка", TrayStatus.Attention);
             trayIcon?.ShowBalloonTip(
                 8_000,
                 "Voice Input — не удалось запустить распознавание",
@@ -366,8 +389,10 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
     {
         var menu = new TrayMenu(engineFactory?.IsLocalEngineAvailable == true);
         trayMenu = menu;
+        menu.Strip.Opening += (_, _) => UpdateEngineReadiness();
         menu.OpenAi.Click += async (_, _) => await SwitchEngineAsync(TranscriptionEngine.OpenAi);
         menu.Local.Click += async (_, _) => await SwitchEngineAsync(TranscriptionEngine.Local);
+        menu.Custom.Click += async (_, _) => await SwitchEngineAsync(TranscriptionEngine.CustomOpenAiCompatible);
         // Built when the submenu opens, so a microphone plugged in a minute ago is already there.
         menu.Microphone.DropDownOpening += (_, _) => menu.FillMicrophones(
             AudioDeviceCatalog.ListMicrophones(),
@@ -402,6 +427,7 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
         {
             trayMenu.OpenAi.Checked = settings.Engine == TranscriptionEngine.OpenAi;
             trayMenu.Local.Checked = settings.Engine == TranscriptionEngine.Local;
+            trayMenu.Custom.Checked = settings.Engine == TranscriptionEngine.CustomOpenAiCompatible;
         }
     }
 
@@ -546,6 +572,12 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
         {
             await ShowTransientStatusAsync("Окно сменилось", "Текст не вставлен");
         }
+        catch (TranscriptionException exception) when (exception.OpenSettings)
+        {
+            Log($"dictation-error-code: {exception.Code}");
+            await ShowTransientErrorAsync(exception.Message);
+            ShowSettings();
+        }
         catch (Exception exception)
         {
             Log($"dictation-error: {exception.GetType().Name}");
@@ -643,6 +675,14 @@ public partial class App : System.Windows.Application, IDisposable, ISettingsHos
 
         Log($"hotkey-registration-warning: hold={hotkey!.HoldHotkeyError} toggle={hotkey.ToggleHotkeyError}");
         trayIcon.ShowBalloonTip(8_000, "Voice Input — горячая клавиша занята", message, Forms.ToolTipIcon.Warning);
+    }
+
+    private void UpdateEngineReadiness()
+    {
+        var modelPath = Path.Combine(AppDataPaths.Root, "models", LocalModelManager.DefaultModel.FileName);
+        var readiness = EngineStatus.Evaluate(settings, File.Exists(modelPath), apiKeyProvider.HasKey);
+        UpdateStatus(EngineStrings.Status(readiness, settings.Engine),
+            readiness == EngineReadiness.Ready ? TrayStatus.Ready : TrayStatus.Attention);
     }
 
     private void UpdateStatus(string status, TrayStatus kind = TrayStatus.Busy)

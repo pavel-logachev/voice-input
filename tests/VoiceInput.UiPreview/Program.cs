@@ -17,8 +17,9 @@ namespace VoiceInput.UiPreview;
 /// <summary>
 /// Renders the real overlay, settings window and tray menu to PNG files so the design can be reviewed
 /// (and used in documentation) without recording a dictation.
-/// Usage: UiPreview &lt;output-directory&gt; [--dpi=96|144|192|384] [--high-contrast] [--transparent].
+/// Usage: UiPreview &lt;output-directory&gt; [--dpi=96|144|192|384] [--high-contrast] [--transparent] [--live-download].
 /// --transparent leaves the overlay pictures without a backdrop, for laying them over other artwork.
+/// --live-download also runs the real model download against a small file on a local test server.
 /// </summary>
 internal static class Program
 {
@@ -61,7 +62,8 @@ internal static class Program
         overlay.ShowElapsed(TimeSpan.FromSeconds(7));
         for (var index = 0; index < 60; index++)
         {
-            overlay.SetRecordingLevel((float)Math.Abs(Math.Sin(index / 3.2)) * (0.15f + (index / 82f)));
+            overlay.AudioMeter.AdvancePreview(
+                (float)Math.Abs(Math.Sin(index / 3.2)) * (0.15f + (index / 82f)), TimeSpan.FromMilliseconds(30));
         }
 
         written.Add(Capture(overlay, output, "overlay-listening"));
@@ -107,6 +109,12 @@ internal static class Program
         engines.Show();
         written.Add(Capture(engines, output, "settings-engines"));
         engines.Close();
+
+        written.AddRange(EnginePreview.CaptureAll(output));
+        if (args.Contains("--live-download"))
+        {
+            written.AddRange(EnginePreview.CaptureLiveDownload(output));
+        }
 
         written.AddRange(CaptureTrayMenu(output));
 
@@ -236,6 +244,10 @@ internal static class Program
         }
     }
 
+    internal static string CaptureWindow(Window window, string directory, string name) => Capture(window, directory, name);
+
+    internal static void PumpFor(Window window, TimeSpan duration) => Pump(window, duration);
+
     private static string Capture(Window window, string directory, string name)
     {
         window.UpdateLayout();
@@ -293,7 +305,12 @@ internal static class Program
         return path;
     }
 
-    private sealed class FakeHost(AppSettings settings, bool hasKey, bool localEngine = false) : ISettingsHost
+    internal sealed class FakeHost(
+        AppSettings settings,
+        bool hasKey,
+        bool localEngine = true,
+        ILocalModelHost? localModel = null,
+        ICustomServerHost? customServer = null) : ISettingsHost
     {
         public static IReadOnlyList<MicrophoneChoice> Devices { get; } =
         [
@@ -301,7 +318,7 @@ internal static class Program
             new("b", "Гарнитура (Logi Zone Wired)"),
         ];
 
-        public AppSettings Current { get; } = settings;
+        public AppSettings Current { get; private set; } = settings;
 
         public bool HasApiKey { get; } = hasKey;
 
@@ -309,13 +326,21 @@ internal static class Program
 
         public IReadOnlyList<MicrophoneChoice> Microphones => Devices;
 
+        public ILocalModelHost LocalModel { get; } = localModel ?? new EnginePreview.FakeLocalModel();
+
+        public ICustomServerHost CustomServer { get; } = customServer ?? new EnginePreview.FakeCustomServer();
+
         public Task<OpenAiKeyCheckResult> CheckApiKeyAsync(string? candidate) =>
             Task.FromResult(new OpenAiKeyCheckResult(OpenAiKeyCheckStatus.Accepted, "Ключ работает."));
 
         // The version the application itself is built with, so the pictures never show a stale number.
         public string Version { get; } = typeof(MainWindow).Assembly.GetName().Version!.ToString(3);
 
-        public Task<string?> ApplyAsync(AppSettings next) => Task.FromResult<string?>(null);
+        public Task<string?> ApplyAsync(AppSettings next)
+        {
+            Current = next;
+            return Task.FromResult<string?>(null);
+        }
 
         public string? SaveApiKey(string apiKey) => null;
 

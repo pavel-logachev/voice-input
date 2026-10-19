@@ -390,29 +390,157 @@
             </Setter>
         </Style>
 
-        <!-- Two-way choice of the recognition engine (shown only when more than one is available). -->
-        <Style x:Key="Segment" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
-            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+        <!-- One engine of three: a whole card row with a round mark, its name and what it means. -->
+        <Style x:Key="EngineOption" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource InsetFocusRing}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Surface" Height="28" CornerRadius="6" Background="Transparent">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,1" />
-                        </Border>
+                        <Grid Background="Transparent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid Width="18" Height="18" Margin="14,10,12,0" VerticalAlignment="Top">
+                                <Ellipse x:Name="Ring"
+                                         Fill="{DynamicResource Brush.Field}"
+                                         Stroke="{DynamicResource Brush.FieldBorderHover}"
+                                         StrokeThickness="1.5" />
+                                <Ellipse x:Name="Mark"
+                                         Width="7"
+                                         Height="7"
+                                         Fill="{DynamicResource Brush.OnAccent}"
+                                         Visibility="Collapsed" />
+                            </Grid>
+                            <ContentPresenter Grid.Column="1" Margin="0,9,14,10" />
+                        </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+                                <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource Brush.Accent}" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Brush.Highlight}" />
-                                <Setter Property="Foreground" Value="{DynamicResource Brush.OnHighlight}" />
+                                <Setter TargetName="Ring" Property="Fill" Value="{DynamicResource Brush.Accent}" />
+                                <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource Brush.Accent}" />
+                                <Setter TargetName="Mark" Property="Visibility" Value="Visible" />
                                 <Setter Property="FontWeight" Value="SemiBold" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <!-- Text fields of the own server: the same frame as the key field, and a red one while the value is wrong. -->
+        <Style TargetType="TextBox">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource Brush.Text}" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource Brush.Accent}" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Frame"
+                                CornerRadius="8"
+                                Background="{DynamicResource Brush.Field}"
+                                BorderBrush="{DynamicResource Brush.FieldBorder}"
+                                BorderThickness="1">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource Brush.FieldBorderHover}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+                                <Setter TargetName="Frame" Property="BorderThickness" Value="2" />
+                            </Trigger>
+                            <Trigger Property="Tag" Value="Error">
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource Brush.Error}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- The confirming button of a destructive action. -->
+        <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.OnAccent}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Surface"
+                                Padding="{TemplateBinding Padding}"
+                                CornerRadius="8"
+                                Background="{DynamicResource Brush.Error}"
+                                BorderBrush="{DynamicResource Brush.Error}"
+                                BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,1" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Surface" Property="Opacity" Value="0.88" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Surface" Property="Opacity" Value="0.76" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Download progress of the local model: a thin track, filled with the accent. -->
+        <Style x:Key="ModelProgress" TargetType="ProgressBar">
+            <Setter Property="Height" Value="6" />
+            <Setter Property="Minimum" Value="0" />
+            <Setter Property="Maximum" Value="1" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Grid>
+                            <Border x:Name="PART_Track"
+                                    CornerRadius="3"
+                                    Background="{DynamicResource Brush.Subtle}"
+                                    BorderBrush="{DynamicResource Brush.CardBorder}"
+                                    BorderThickness="1" />
+                            <Border x:Name="PART_Indicator"
+                                    HorizontalAlignment="Left"
+                                    CornerRadius="3"
+                                    Background="{DynamicResource Brush.Accent}" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- The heading line of an engine's own settings, under the three choices. -->
+        <Style x:Key="PanelTitle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+
+        <!-- A coloured dot in front of a state line, so the state reads at a glance and in high contrast. -->
+        <Style x:Key="StateDot" TargetType="Ellipse">
+            <Setter Property="Width" Value="6" />
+            <Setter Property="Height" Value="6" />
+            <Setter Property="Margin" Value="1,6,8,0" />
+            <Setter Property="VerticalAlignment" Value="Top" />
         </Style>
 
         <!-- A keyboard key cap: the same one the overlay shows for Esc. -->
@@ -462,8 +590,9 @@
         </Style>
     </Window.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
-        <StackPanel Margin="20,14,20,16">
+    <Grid>
+    <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto" Focusable="False">
+        <StackPanel x:Name="ContentPanel" Margin="20,14,20,16">
             <!-- Header -->
             <Grid Margin="2,0,2,13">
                 <Grid.ColumnDefinitions>
@@ -487,66 +616,49 @@
                 </StackPanel>
             </Grid>
 
-            <!-- Recognition -->
-            <TextBlock Style="{StaticResource SectionCaption}" Text="Распознавание" />
+            <!-- Recognition engine: three choices, then the settings of the chosen one. -->
+            <TextBlock x:Name="EngineCaption" Style="{StaticResource SectionCaption}" />
             <Border Style="{StaticResource Card}">
                 <StackPanel>
-                    <StackPanel x:Name="EnginePanel" Margin="14,12,14,12">
-                        <Border Padding="3" CornerRadius="8" Background="{DynamicResource Brush.Field}" BorderBrush="{DynamicResource Brush.FieldBorder}" BorderThickness="1">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <RadioButton x:Name="OpenAiRadio" GroupName="Engine" Style="{StaticResource Segment}" Content="OpenAI, через интернет" />
-                                <RadioButton x:Name="LocalRadio" Grid.Column="1" GroupName="Engine" Style="{StaticResource Segment}" Content="На этом компьютере (GigaAM)" />
-                            </Grid>
-                        </Border>
-                        <TextBlock x:Name="EngineIntro" Style="{StaticResource Hint}" Margin="0,8,0,0" />
+                    <StackPanel x:Name="EngineOptions" KeyboardNavigation.DirectionalNavigation="Contained">
+                        <RadioButton x:Name="OpenAiRadio" GroupName="Engine" Style="{StaticResource EngineOption}">
+                            <StackPanel>
+                                <TextBlock x:Name="OpenAiTitle" TextWrapping="Wrap" />
+                                <TextBlock x:Name="OpenAiDescription" Style="{StaticResource Hint}" FontWeight="Normal" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </RadioButton>
+                        <Border Style="{StaticResource RowDivider}" Margin="44,0,0,0" />
+                        <RadioButton x:Name="LocalRadio" GroupName="Engine" Style="{StaticResource EngineOption}">
+                            <StackPanel>
+                                <TextBlock x:Name="LocalTitle" TextWrapping="Wrap" />
+                                <TextBlock x:Name="LocalDescription" Style="{StaticResource Hint}" FontWeight="Normal" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </RadioButton>
+                        <Border x:Name="CustomDivider" Style="{StaticResource RowDivider}" Margin="44,0,0,0" />
+                        <RadioButton x:Name="CustomRadio" GroupName="Engine" Style="{StaticResource EngineOption}">
+                            <StackPanel>
+                                <TextBlock x:Name="CustomTitle" TextWrapping="Wrap" />
+                                <TextBlock x:Name="CustomDescription" Style="{StaticResource Hint}" FontWeight="Normal" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </RadioButton>
                     </StackPanel>
-                    <Border x:Name="EngineDivider" Style="{StaticResource RowDivider}" />
+                    <Border Style="{StaticResource RowDivider}" Margin="0" />
 
-                    <Grid Margin="14,0" MinHeight="50">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="236" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="LanguageLabel" VerticalAlignment="Center" Text="Язык речи" />
-                        <ComboBox x:Name="LanguageBox" Grid.Column="1" AutomationProperties.LabeledBy="{Binding ElementName=LanguageLabel}" />
-                    </Grid>
-                    <Border Style="{StaticResource RowDivider}" />
-                    <Grid Margin="14,0" MinHeight="54">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="236" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
-                            <TextBlock x:Name="MicrophoneLabel" Text="Микрофон" />
-                            <TextBlock Style="{StaticResource Hint}" Text="Со следующей записи" />
-                        </StackPanel>
-                        <ComboBox x:Name="MicrophoneBox" Grid.Column="1" AutomationProperties.LabeledBy="{Binding ElementName=MicrophoneLabel}" />
-                    </Grid>
-                </StackPanel>
-            </Border>
-
-            <!-- API key -->
-            <StackPanel x:Name="KeyCard">
-                <Grid>
-                    <TextBlock x:Name="KeyCaption" Style="{StaticResource SectionCaption}" Text="API-ключ OpenAI" />
-                    <Border x:Name="KeyChip"
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Center"
-                            Margin="0,0,0,6"
-                            Padding="8,1,9,2"
-                            CornerRadius="10">
-                        <StackPanel Orientation="Horizontal">
-                            <Ellipse x:Name="KeyChipDot" Width="6" Height="6" VerticalAlignment="Center" Margin="0,1,0,0" />
-                            <TextBlock x:Name="KeyChipText" Margin="6,0,0,0" FontSize="11.5" />
-                        </StackPanel>
-                    </Border>
-                </Grid>
-                <Border Style="{StaticResource Card}" Padding="14,11,14,12">
-                    <StackPanel>
+                    <!-- OpenAI: the API key, exactly as before. -->
+                    <StackPanel x:Name="KeyCard" Margin="14,12,14,14">
+                        <Grid Margin="0,0,0,8">
+                            <TextBlock x:Name="KeyCaption" Style="{StaticResource PanelTitle}" Text="API-ключ OpenAI" />
+                            <Border x:Name="KeyChip"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Padding="8,1,9,2"
+                                    CornerRadius="10">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse x:Name="KeyChipDot" Width="6" Height="6" VerticalAlignment="Center" Margin="0,1,0,0" />
+                                    <TextBlock x:Name="KeyChipText" Margin="6,0,0,0" FontSize="11.5" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
                         <TextBlock x:Name="KeyState" Style="{StaticResource Hint}" Margin="0,0,0,10" />
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -579,11 +691,128 @@
                                        Style="{StaticResource Hint}"
                                        Margin="12,0,0,0"
                                        VerticalAlignment="Center"
+                                       AutomationProperties.LiveSetting="Polite"
                                        Visibility="Collapsed" />
                         </Grid>
                     </StackPanel>
-                </Border>
-            </StackPanel>
+
+                    <!-- On this computer: the model card. -->
+                    <Grid x:Name="LocalPanel" Margin="14,12,14,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock x:Name="LocalModelName" Style="{StaticResource PanelTitle}" Margin="0,0,12,0" />
+                        <Button x:Name="LocalActionButton"
+                                Grid.Column="1"
+                                MinWidth="104"
+                                Style="{StaticResource SecondaryButton}" />
+                        <Grid Grid.Row="1" Grid.ColumnSpan="2" Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="LocalStateDot" Style="{StaticResource StateDot}" />
+                            <TextBlock x:Name="LocalState"
+                                       Grid.Column="1"
+                                       Style="{StaticResource Hint}"
+                                       AutomationProperties.LiveSetting="Polite" />
+                        </Grid>
+                        <ProgressBar x:Name="LocalProgress"
+                                     Grid.Row="2"
+                                     Grid.ColumnSpan="2"
+                                     Margin="0,10,0,2"
+                                     Style="{StaticResource ModelProgress}"
+                                     AutomationProperties.LabeledBy="{Binding ElementName=LocalState}" />
+                        <TextBlock x:Name="LocalPrivacy" Grid.Row="3" Grid.ColumnSpan="2" Style="{StaticResource Hint}" Margin="0,10,0,0" />
+                    </Grid>
+
+                    <!-- Own server: address, model, optional key and a check. -->
+                    <StackPanel x:Name="CustomPanel" Margin="14,12,14,14">
+                        <TextBlock x:Name="CustomUrlLabel" Style="{StaticResource FieldLabel}" />
+                        <TextBox x:Name="CustomUrlBox" AutomationProperties.LabeledBy="{Binding ElementName=CustomUrlLabel}" />
+                        <TextBlock x:Name="CustomUrlNote" Style="{StaticResource Hint}" Margin="0,5,0,0" />
+
+                        <TextBlock x:Name="CustomModelLabel" Style="{StaticResource FieldLabel}" Margin="0,10,0,6" />
+                        <TextBox x:Name="CustomModelBox" AutomationProperties.LabeledBy="{Binding ElementName=CustomModelLabel}" />
+                        <TextBlock x:Name="CustomModelNote" Style="{StaticResource Hint}" Margin="0,5,0,0" />
+
+                        <Grid Margin="0,10,0,6">
+                            <TextBlock x:Name="CustomKeyLabel" VerticalAlignment="Center" />
+                            <Border x:Name="CustomKeyChip"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Padding="8,1,9,2"
+                                    CornerRadius="10">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse x:Name="CustomKeyChipDot" Width="6" Height="6" VerticalAlignment="Center" Margin="0,1,0,0" />
+                                    <TextBlock x:Name="CustomKeyChipText" Margin="6,0,0,0" FontSize="11.5" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <PasswordBox x:Name="CustomKeyBox" AutomationProperties.LabeledBy="{Binding ElementName=CustomKeyLabel}" />
+                            <Button x:Name="CustomKeySaveButton" Grid.Column="1" Margin="8,0,0,0" Style="{StaticResource PrimaryButton}" />
+                            <Button x:Name="CustomKeyDeleteButton" Grid.Column="2" Margin="8,0,0,0" Style="{StaticResource SecondaryButton}" />
+                        </Grid>
+                        <TextBlock x:Name="CustomKeyNote" Style="{StaticResource Hint}" Margin="0,5,0,0" />
+
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="CustomCheckButton" Style="{StaticResource SecondaryButton}" Height="30" Padding="12,0" VerticalAlignment="Top" />
+                            <TextBlock x:Name="CustomCheckResult"
+                                       Grid.Column="1"
+                                       Style="{StaticResource Hint}"
+                                       Margin="12,0,0,0"
+                                       Padding="0,6,0,0"
+                                       AutomationProperties.LiveSetting="Polite"
+                                       Visibility="Collapsed" />
+                        </Grid>
+                        <TextBlock x:Name="CustomPrivacy" Style="{StaticResource Hint}" Margin="0,10,0,0" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Recognition -->
+            <TextBlock Style="{StaticResource SectionCaption}" Text="Распознавание" />
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <Grid Margin="14,0" MinHeight="50">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="236" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="LanguageLabel" VerticalAlignment="Center" Text="Язык речи" />
+                        <ComboBox x:Name="LanguageBox" Grid.Column="1" AutomationProperties.LabeledBy="{Binding ElementName=LanguageLabel}" />
+                    </Grid>
+                    <Border Style="{StaticResource RowDivider}" />
+                    <Grid Margin="14,0" MinHeight="54">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="236" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                            <TextBlock x:Name="MicrophoneLabel" Text="Микрофон" />
+                            <TextBlock Style="{StaticResource Hint}" Text="Со следующей записи" />
+                        </StackPanel>
+                        <ComboBox x:Name="MicrophoneBox" Grid.Column="1" AutomationProperties.LabeledBy="{Binding ElementName=MicrophoneLabel}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
 
             <!-- Hotkeys and startup -->
             <TextBlock Style="{StaticResource SectionCaption}" Text="Клавиши и запуск" />
@@ -643,4 +872,32 @@
             </Grid>
         </StackPanel>
     </ScrollViewer>
+
+    <!-- Confirmation of the model deletion: a dialog over the dimmed window, like a Windows content dialog. -->
+    <Grid x:Name="ConfirmLayer" Visibility="Collapsed" Background="Transparent">
+        <Border x:Name="ConfirmCard"
+                Style="{StaticResource Card}"
+                Margin="32,0"
+                MaxWidth="400"
+                Padding="20,18,20,18"
+                VerticalAlignment="Center"
+                AutomationProperties.LabeledBy="{Binding ElementName=ConfirmTitle}">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="24" ShadowDepth="6" Direction="270" Opacity="0.5" Color="#000000" />
+            </Border.Effect>
+            <StackPanel>
+                <TextBlock x:Name="ConfirmTitle" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock x:Name="ConfirmText"
+                           Margin="0,8,0,0"
+                           TextWrapping="Wrap"
+                           LineHeight="19"
+                           Foreground="{DynamicResource Brush.TextMuted}" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+                    <Button x:Name="ConfirmDeleteButton" MinWidth="96" Style="{StaticResource DangerButton}" />
+                    <Button x:Name="ConfirmCancelButton" MinWidth="96" Margin="8,0,0,0" Style="{StaticResource SecondaryButton}" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+    </Grid>
 </Window>
