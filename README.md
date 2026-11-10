@@ -6,7 +6,7 @@
 
 [![Последний релиз](https://img.shields.io/github/v/release/pavel-logachev/voice-input?style=flat-square&labelColor=0b0f14&label=%D1%80%D0%B5%D0%BB%D0%B8%D0%B7&color=c3f451)](https://github.com/pavel-logachev/voice-input/releases/latest) [![Проверки в CI](https://img.shields.io/github/actions/workflow/status/pavel-logachev/voice-input/ci.yml?branch=main&style=flat-square&labelColor=0b0f14&label=CI)](https://github.com/pavel-logachev/voice-input/actions/workflows/ci.yml) [![Лицензия](https://img.shields.io/github/license/pavel-logachev/voice-input?style=flat-square&labelColor=0b0f14&label=%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F&color=7f99ad)](<LICENSE>)
 
-**Диктуйте в поля ввода Windows: зажмите `Ctrl + Shift + Space`, скажите фразу и отпустите клавиши — текст появится у курсора.**
+**Диктуйте в поля ввода Windows: зажмите `Ctrl + Shift + Space`, скажите фразу и отпустите клавиши – текст появится у курсора.**
 
 [Скачать](https://github.com/pavel-logachev/voice-input/releases/latest) · [Как пользоваться](<#как-пользоваться>) · [Приватность](<#приватность>) · [Архитектура](<docs/ARCHITECTURE.md>)
 
@@ -14,7 +14,7 @@ Windows 10 1809+ / 11 x64
 
 Voice Input работает в системном трее. Речь распознает движок, выбранный в настройках: OpenAI по вашему API-ключу (нужен интернет, запросы оплачиваются с вашего аккаунта OpenAI), модель GigaAM на этом компьютере без интернета или ваш сервер с API, совместимым с OpenAI.
 
-Первый запуск — [установить приложение и выбрать движок в настройках](<#установка>).
+Первый запуск – [установить приложение и выбрать движок в настройках](<#установка>).
 
 ## Как пользоваться
 
@@ -26,7 +26,7 @@ Voice Input работает в системном трее. Речь распо
 
 Чтобы отменить запись или распознавание, нажмите `Esc`: текст не вставится, даже если ответ придет позже.
 
-![Оверлей Voice Input 1.2 в шести состояниях: «Слушаю», «Распознаю», «Вставляю текст», «Готово», «Не услышал» и ошибка «Не удалось» с пояснением «OpenAI отклонил API-ключ (HTTP 401).». Рядом окно настроек 1.2.0: в карточке «Движок распознавания» выбран вариант «На этом компьютере (GigaAM)», модель загружается — 73 из 184 МБ, 5,2 МБ/с; ниже блок «Распознавание» с выбором языка и микрофона.](<docs/assets/voice-input-product.png>)
+![Оверлей Voice Input 1.2 в шести состояниях: «Слушаю», «Распознаю», «Вставляю текст», «Готово», «Не услышал» и ошибка «Не удалось» с пояснением «OpenAI отклонил API-ключ (HTTP 401).». Рядом окно настроек 1.2.0: в карточке «Движок распознавания» выбран вариант «На этом компьютере (GigaAM)», модель загружается – 73 из 184 МБ, 5,2 МБ/с; ниже блок «Распознавание» с выбором языка и микрофона.](<docs/assets/voice-input-product.png>)
 
 *Оверлей в шести состояниях и окно настроек Voice Input 1.2.*
 
@@ -140,7 +140,7 @@ dotnet run --project tests/VoiceInput.UiPreview -c Release -- preview
 
 ## Нужно похожее решение?
 
-Проект сделал [Павел Логачев](https://github.com/pavel-logachev). Делаю сайты, веб-сервисы, Telegram-ботов, приложения и автоматизацию под задачу: сам разбираю, делаю и запускаю. 20 лет в ИТ: инженер, затем руководитель проектов. Расскажите о задаче [на почту](mailto:pavel@logachev.net) или [в Telegram](https://t.me/pavel_logachev) — разбор на 20–30 минут бесплатный, готовое ТЗ не нужно. Цены и другие проекты — на [logachev.net](https://logachev.net/) и [в профиле](https://github.com/pavel-logachev).
+Проект сделал [Павел Логачев](https://github.com/pavel-logachev). Делаю сайты, веб-сервисы, Telegram-ботов, приложения и автоматизацию под задачу. Код пишут ИИ-агенты под моим руководством, я разбираю задачу, проверяю и запускаю. 20 лет в ИТ: инженер, затем руководитель проектов. Расскажите о задаче [на почту](mailto:pavel@logachev.net) или [в Telegram](https://t.me/pavel_logachev) — разбор на 20–30 минут бесплатный, готовое ТЗ не нужно. Цены и другие проекты — на [logachev.net](https://logachev.net/) и [в профиле](https://github.com/pavel-logachev).
 
 ## Документы и лицензия
 
